@@ -1,0 +1,163 @@
+Arduino – קלט ופלט דיגיטלי: נורות LED וכפתורים
+=================================================
+
+הערה: הפרטים החשמליים במסמך מתייחסים ל־Arduino UNO R3, שמבוסס על המיקרו־בקר ATmega328P ופועל ב־5V. בלוחות אחרים (למשל לוחות שפועלים ב־3.3V) המתחים, הזרמים המותרים ומספרי הפינים עשויים להיות שונים. יש לבדוק את התיעוד של הלוח הספציפי.
+
+1. מבנה תוכנית Arduino (Sketch)
+--------------------------------
+לכל Sketch יש שתי פונקציות חובה:
+- setup() – רצה פעם אחת אחרי הדלקה או Reset. משמשת לאתחול: הגדרת פינים, תקשורת ועוד.
+- loop() – רצה שוב ושוב בלי סוף, אחרי setup().
+
+    const int LED_PIN = 13;     // בלוח UNO מחוברת לפין 13 נורית מובנית (LED_BUILTIN)
+
+    void setup() {
+      pinMode(LED_PIN, OUTPUT);
+    }
+
+    void loop() {
+      digitalWrite(LED_PIN, HIGH);   // הדלקה
+      delay(500);                    // המתנה של 500 מילישניות
+      digitalWrite(LED_PIN, LOW);    // כיבוי
+      delay(500);
+    }
+
+עדיף להשתמש בקבוע LED_BUILTIN במקום במספר 13, כי בלוחות שונים הנורית המובנית מחוברת לפינים שונים.
+
+2. הפונקציות הבסיסיות
+----------------------
+- pinMode(pin, mode) – מגדירה פין כ־OUTPUT, ‏INPUT או INPUT_PULLUP.
+- digitalWrite(pin, value) – כותבת HIGH או LOW לפין שהוגדר כיציאה.
+- digitalRead(pin) – קוראת מצב של פין כניסה ומחזירה HIGH או LOW.
+- delay(ms) – עוצרת את התוכנית למספר מילישניות. בזמן delay המעבד לא מריץ את שאר הקוד ב־loop.
+
+3. חיבור נורת LED – חישוב נגד
+-------------------------------
+נורת LED חייבת נגד בטור כדי להגביל את הזרם. בלי נגד, הזרם עלול להזיק לנורה ולפין של המיקרו־בקר.
+חישוב לפי חוק אוהם: R = (Vsupply - Vf) / I
+- Vsupply – מתח היציאה של הפין: 5V בלוח UNO.
+- Vf – מתח ההולכה (Forward Voltage) של ה־LED, לפי גיליון הנתונים שלו. לנורה אדומה הוא בדרך כלל כ־1.8V–2.2V, ולנורה כחולה או לבנה כ־3V–3.3V.
+- I – הזרם הרצוי. ערך נפוץ ובטוח הוא 10mA עד 15mA.
+
+דוגמה: לנורה אדומה עם Vf = 2V וזרם של 15mA:
+R = (5 - 2) / 0.015 = 200Ω. בוחרים את הערך התקני הקרוב והגדול יותר, 220Ω.
+
+לגבי מגבלת הזרם: לפי גיליון הנתונים של ATmega328P, הזרם המרבי המוחלט (Absolute Maximum) לפין הוא 40mA. זה גבול שאסור לעבור, ולא ערך עבודה – מקובל לתכנן לזרם נמוך משמעותית, כ־20mA לכל היותר. יש גם מגבלה על סך הזרם של כל הפינים יחד. עומסים כבדים יותר, כמו מנוע, ממסר או רצועת LED, מפעילים דרך טרנזיסטור או דרייבר, ולא ישירות מהפין.
+
+4. קריאת כפתור – Pull-up ו־Pull-down
+-------------------------------------
+פין כניסה שאינו מחובר לשום דבר נמצא במצב "צף" (Floating). קריאה ממנו מחזירה ערכים אקראיים, כי הפין קולט רעש חשמלי. לכן כל כפתור צריך נגד שקובע מצב ברירת מחדל:
+- Pull-down – נגד בין הפין ל־GND. במצב רגיל הקריאה היא LOW, ובלחיצה (הכפתור מחבר ל־5V) היא HIGH.
+- Pull-up – נגד בין הפין ל־5V. במצב רגיל הקריאה היא HIGH, ובלחיצה (הכפתור מחבר ל־GND) היא LOW.
+
+ל־ATmega328P יש נגדי Pull-up פנימיים, ומפעילים אותם עם INPUT_PULLUP. כך מספיק לחבר את הכפתור בין הפין לבין GND, בלי נגד חיצוני. חשוב לזכור שבחיבור כזה הלוגיקה הפוכה: לחיצה מחזירה LOW.
+
+    const int BUTTON_PIN = 2;
+
+    void setup() {
+      pinMode(BUTTON_PIN, INPUT_PULLUP);
+      pinMode(LED_BUILTIN, OUTPUT);
+    }
+
+    void loop() {
+      bool pressed = (digitalRead(BUTTON_PIN) == LOW);   // לוגיקה הפוכה!
+      digitalWrite(LED_BUILTIN, pressed ? HIGH : LOW);
+    }
+
+5. ריטוט מגעים (Debouncing)
+----------------------------
+כשלוחצים על כפתור מכני, המגעים "קופצים" במשך כמה מילישניות, ונוצרים מעברים מהירים בין HIGH ל־LOW. בלי טיפול, לחיצה אחת עלולה להיספר כמה פעמים. זמן הריטוט תלוי בכפתור. ערך המתנה מקובל הוא 20–50ms.
+
+פתרון בתוכנה, בלי delay, בעזרת millis():
+
+    const int BUTTON_PIN = 2;
+    const unsigned long DEBOUNCE_MS = 30;
+
+    int stableState = HIGH;          // המצב היציב האחרון (INPUT_PULLUP: לא לחוץ = HIGH)
+    int lastReading = HIGH;
+    unsigned long lastChange = 0;
+    int pressCount = 0;
+
+    void setup() {
+      pinMode(BUTTON_PIN, INPUT_PULLUP);
+      Serial.begin(9600);
+    }
+
+    void loop() {
+      int reading = digitalRead(BUTTON_PIN);
+      if (reading != lastReading) {          // הקריאה השתנתה – מאפסים את הטיימר
+        lastChange = millis();
+        lastReading = reading;
+      }
+      if (millis() - lastChange > DEBOUNCE_MS && reading != stableState) {
+        stableState = reading;               // הקריאה יציבה מספיק זמן
+        if (stableState == LOW) {            // זוהתה לחיצה
+          pressCount++;
+          Serial.println(pressCount);
+        }
+      }
+    }
+
+אפשר גם לסנן ריטוט בחומרה, עם רשת RC קטנה (נגד וקבל), ולפעמים עם Schmitt Trigger.
+
+6. תזמון בלי delay – millis()
+------------------------------
+millis() מחזירה את מספר המילישניות מאז שהלוח התחיל לרוץ, כ־unsigned long. הערך חוזר לאפס (Overflow) אחרי כ־50 ימים.
+החיסור millis() - previous נותן תוצאה נכונה גם אחרי חזרה לאפס, בזכות אריתמטיקה של מספרים בלי סימן (Unsigned). לכן משווים תמיד הפרש לפרק זמן, ולא millis() > target.
+
+הבהוב בלי delay, כך שהלולאה ממשיכה לטפל בדברים אחרים:
+
+    unsigned long previous = 0;
+    const unsigned long INTERVAL = 1000;
+    bool ledOn = false;
+
+    void loop() {
+      unsigned long now = millis();
+      if (now - previous >= INTERVAL) {
+        previous = now;
+        ledOn = !ledOn;
+        digitalWrite(LED_BUILTIN, ledOn ? HIGH : LOW);
+      }
+      // כאן אפשר לקרוא כפתורים וחיישנים בלי לחכות
+    }
+
+7. פסיקה חיצונית (External Interrupt)
+-------------------------------------
+attachInterrupt(digitalPinToInterrupt(pin), handler, mode) מריצה את הפונקציה handler כשמשתנה המצב של הפין. mode יכול להיות RISING, ‏FALLING, ‏CHANGE או LOW.
+ב־UNO, רק פינים 2 ו־3 תומכים בפסיקה חיצונית מהסוג הזה. בלוחות אחרים הרשימה שונה.
+
+    volatile unsigned long pulses = 0;   // volatile – משתנה שמשתנה בתוך ISR
+
+    void onPulse() {                     // ISR: קצרה, בלי delay ובלי Serial
+      pulses++;
+    }
+
+    void setup() {
+      pinMode(2, INPUT_PULLUP);
+      attachInterrupt(digitalPinToInterrupt(2), onPulse, FALLING);
+      Serial.begin(9600);
+    }
+
+    void loop() {
+      noInterrupts();                    // קריאה בטוחה של משתנה רב־בתי
+      unsigned long copy = pulses;
+      interrupts();
+      Serial.println(copy);
+      delay(1000);
+    }
+
+ב־ATmega328P, מעבד של 8 ביט, קריאה של unsigned long (4 בתים) אינה אטומית. פסיקה עלולה להגיע באמצע הקריאה, ולכן מנטרלים פסיקות לזמן ההעתקה.
+
+8. שאלות תרגול ופתרונות
+------------------------
+שאלה 1: חשבו נגד לנורה כחולה עם Vf = 3.2V, מקור של 5V וזרם של 10mA.
+פתרון: R = (5 - 3.2) / 0.010 = 180Ω. ‏180Ω הוא ערך תקני בסדרה E12. אם רוצים זרם נמוך מעט יותר, אפשר לבחור 220Ω.
+
+שאלה 2: חיברתם כפתור בין פין 4 ל־GND, והגדרתם pinMode(4, INPUT_PULLUP). מה תחזיר digitalRead(4) כשהכפתור לחוץ?
+פתרון: LOW. הנגד הפנימי מושך את הפין ל־HIGH, והלחיצה מחברת אותו ל־GND.
+
+שאלה 3: למה הבהוב עם delay מפריע לקרוא כפתור באותו זמן?
+פתרון: delay עוצרת את כל הקוד ב־loop. בזמן ההמתנה לא מתבצעת קריאה של הכפתור, ולחיצות קצרות עלולות להתפספס. עם millis() הלולאה ממשיכה לרוץ ובודקת את הכפתור בכל סיבוב.
+
+שאלה 4: למה משתנה שמשתנה בתוך ISR צריך להיות volatile?
+פתרון: בלי volatile, הקומפיילר עשוי להניח שהמשתנה לא משתנה בתוך loop, ולשמור עותק שלו ברגיסטר. אז הלולאה לא תראה את העדכון שהגיע מהפסיקה. volatile מחייב קריאה מחדש מהזיכרון בכל גישה.

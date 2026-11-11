@@ -1,0 +1,147 @@
+STM32 – GPIO ופסיקות (Interrupts) עם ספריית HAL
+=================================================
+
+הערה חשובה: משפחת STM32 כוללת מאות דגמים, ממשפחות שונות (F0, F1, F4, G0, L4, H7 ועוד). שמות הפינים, מספר הפורטים, מהירויות השעון וחיבורי הלוח משתנים בין דגמים ולוחות. הדוגמאות כאן משתמשות בספריית HAL של ST (חתימות הפונקציות לקוחות מקוד המקור של HAL למשפחת STM32F4). את פרטי הלוח הספציפי יש לבדוק במדריך המשתמש של הלוח (User Manual) ובגיליון הנתונים של המיקרו־בקר.
+
+1. מבנה GPIO ב־STM32
+---------------------
+הפינים מקובצים בפורטים (Ports) – GPIOA, ‏GPIOB, ‏GPIOC וכן הלאה. בכל פורט יש עד 16 פינים, ממוספרים 0 עד 15. פין מזוהה לפי הפורט ומספר הפין, למשל PA5 הוא פין 5 בפורט A.
+לפני שימוש בפורט חייבים להפעיל את השעון שלו. בלי שעון, הפורט לא מגיב:
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+בפרויקט שנוצר ב־STM32CubeMX / STM32CubeIDE, קוד האתחול נוצר אוטומטית בפונקציה MX_GPIO_Init().
+
+מצבי פין עיקריים (מתוך stm32f4xx_hal_gpio.h):
+- GPIO_MODE_INPUT – כניסה דיגיטלית.
+- GPIO_MODE_OUTPUT_PP – יציאה Push-Pull: הפין דוחף גם HIGH וגם LOW באופן אקטיבי.
+- GPIO_MODE_OUTPUT_OD – יציאה Open-Drain: הפין יכול רק למשוך ל־LOW. כדי לקבל HIGH צריך נגד Pull-up. מצב זה משמש בקווים משותפים, כמו I2C.
+- GPIO_MODE_AF_PP / GPIO_MODE_AF_OD – פונקציה חלופית (Alternate Function): הפין מחובר לציוד היקפי כמו UART, ‏SPI או טיימר.
+- GPIO_MODE_ANALOG – מצב אנלוגי, למשל לכניסת ADC.
+- GPIO_MODE_IT_RISING / GPIO_MODE_IT_FALLING / GPIO_MODE_IT_RISING_FALLING – כניסה עם פסיקה חיצונית (EXTI) בעליית אות, בירידתו או בשניהם.
+נגדי משיכה: GPIO_NOPULL, ‏GPIO_PULLUP, ‏GPIO_PULLDOWN.
+
+2. אתחול ידני של פין יציאה
+---------------------------
+    #include "main.h"     /* בפרויקט CubeIDE – כולל את stm32xxxx_hal.h */
+
+    void led_init(void) {
+        __HAL_RCC_GPIOA_CLK_ENABLE();
+
+        GPIO_InitTypeDef init = {0};
+        init.Pin   = GPIO_PIN_5;
+        init.Mode  = GPIO_MODE_OUTPUT_PP;
+        init.Pull  = GPIO_NOPULL;
+        init.Speed = GPIO_SPEED_FREQ_LOW;
+        HAL_GPIO_Init(GPIOA, &init);
+    }
+
+Speed קובעת את מהירות שינוי המצב (Slew Rate) של הפין, ולא את תדר השעון. ליציאה איטית כמו LED מספיקה מהירות נמוכה, והיא גם מפחיתה רעש אלקטרומגנטי.
+
+3. כתיבה וקריאה – פונקציות HAL
+-------------------------------
+חתימות הפונקציות:
+    void HAL_GPIO_WritePin(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin, GPIO_PinState PinState);
+    GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin);
+    void HAL_GPIO_TogglePin(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin);
+GPIO_PinState מקבל את הערכים GPIO_PIN_RESET (‏0) ו־GPIO_PIN_SET (‏1).
+
+    while (1) {
+        HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+        HAL_Delay(500);        /* השהיה במילישניות, מבוססת על SysTick */
+    }
+
+    if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == GPIO_PIN_RESET) {
+        /* הכפתור לחוץ – אם הוא מחובר כך שלחיצה מושכת את הפין ל־LOW */
+    }
+
+דוגמה תלויה בלוח: בלוחות Nucleo-64 (למשל NUCLEO-F401RE), נורית המשתמש LD2 מחוברת בדרך כלל ל־PA5, וכפתור המשתמש B1 ל־PC13, כשלחיצה נותנת LOW. חובה לוודא זאת במדריך של הלוח שבידיכם (למשל UM1724 לסדרת Nucleo-64), כי בלוחות אחרים החיבורים שונים.
+
+גישה ישירה לרגיסטרים (מהירה יותר ואטומית):
+- הרגיסטר BSRR מאפשר להדליק או לכבות ביטים בלי פעולת קריאה־שינוי־כתיבה:
+    GPIOA->BSRR = GPIO_PIN_5;             /* Set PA5 */
+    GPIOA->BSRR = (uint32_t)GPIO_PIN_5 << 16;  /* Reset PA5 */
+- הרגיסטר IDR מכיל את מצב הכניסות, ו־ODR את מצב היציאות.
+
+4. פסיקות חיצוניות – EXTI
+--------------------------
+EXTI (External Interrupt/Event Controller) מאפשר לקבל פסיקה בשינוי מצב של פין. ב־STM32 יש קווי EXTI לפי מספר הפין: הקו EXTI0 משותף לכל הפינים מספר 0 (PA0, ‏PB0 וכו'). לכן בכל רגע רק פורט אחד יכול להשתמש בקו מסוים. למשל, אי אפשר לקבל פסיקות גם מ־PA3 וגם מ־PB3 בו־זמנית.
+בדרך כלל, קווים 5–9 חולקים וקטור פסיקה אחד (EXTI9_5_IRQn), וכך גם קווים 10–15 (EXTI15_10_IRQn). החלוקה המדויקת תלויה במשפחה.
+
+אתחול פין כפסיקה בירידת אות, והפעלת הפסיקה ב־NVIC:
+
+    void button_init(void) {
+        __HAL_RCC_GPIOC_CLK_ENABLE();
+        GPIO_InitTypeDef init = {0};
+        init.Pin  = GPIO_PIN_13;
+        init.Mode = GPIO_MODE_IT_FALLING;
+        init.Pull = GPIO_NOPULL;          /* בהנחה שיש נגד Pull-up חיצוני בלוח */
+        HAL_GPIO_Init(GPIOC, &init);
+
+        HAL_NVIC_SetPriority(EXTI15_10_IRQn, 2, 0);
+        HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
+    }
+
+5. שרשרת הטיפול בפסיקה ב־HAL
+-----------------------------
+1) החומרה קוראת ל־ISR, למשל EXTI15_10_IRQHandler. הפונקציה נמצאת בקובץ stm32xxxx_it.c.
+2) ה־ISR קורא ל־HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_13). פונקציה זו מנקה את דגל הפסיקה (Pending Bit) וקוראת ל־Callback.
+3) את ה־Callback כותבים בקוד שלכם:
+    void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin);
+הפונקציה מוגדרת ב־HAL כ־weak, כך שהגדרה שלכם עם אותו שם מחליפה אותה.
+
+    volatile uint8_t button_flag = 0;
+
+    void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+        if (GPIO_Pin == GPIO_PIN_13) {
+            button_flag = 1;              /* רק מסמנים – העבודה עצמה בלולאה הראשית */
+        }
+    }
+
+    int main(void) {
+        HAL_Init();
+        /* SystemClock_Config(); led_init(); button_init(); */
+        while (1) {
+            if (button_flag) {
+                button_flag = 0;
+                HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+            }
+        }
+    }
+
+6. עדיפויות פסיקה – NVIC
+-------------------------
+ה־NVIC (Nested Vectored Interrupt Controller) של ליבות Cortex-M מנהל את הפסיקות:
+- מספר עדיפות נמוך יותר פירושו עדיפות גבוהה יותר. פסיקה בעדיפות 0 קודמת לפסיקה בעדיפות 5.
+- פסיקה בעדיפות גבוהה יכולה לקטוע פסיקה בעדיפות נמוכה (Nesting).
+- העדיפות מחולקת ל־Preemption Priority ול־Sub Priority, לפי הגדרת Priority Grouping.
+- מספר ביטי העדיפות הממומשים תלוי במשפחה. ב־STM32F4, למשל, ממומשים 4 ביטים, כלומר 16 רמות.
+אזהרה: HAL_Delay מסתמכת על פסיקת SysTick. אם קוראים ל־HAL_Delay מתוך פסיקה שעדיפותה גבוהה מזו של SysTick, או שווה לה, היא עלולה להיתקע לעולם.
+
+7. כללים לכתיבת ISR ו־Callback
+-------------------------------
+- לשמור על קוד קצר. מסמנים דגל או מעתיקים נתון, וממשיכים בלולאה הראשית.
+- לא להשתמש ב־HAL_Delay, בהדפסות ארוכות או בהמתנות בתוך פסיקה.
+- משתנים שמשותפים לפסיקה ולקוד הראשי מגדירים כ־volatile.
+- כפתור מכני גורם לריטוט (Bounce), ולכן פסיקה אחת יכולה להפוך לכמה. מטפלים בזה בהתעלמות מפסיקות חוזרות בחלון זמן קצר (בעזרת HAL_GetTick), או בסינון חומרתי.
+
+    void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+        static uint32_t last = 0;
+        uint32_t now = HAL_GetTick();
+        if (GPIO_Pin == GPIO_PIN_13 && (now - last) > 50) {   /* 50ms debounce */
+            last = now;
+            button_flag = 1;
+        }
+    }
+
+8. שאלות תרגול ופתרונות
+------------------------
+שאלה 1: הגדרתם את PB7 כיציאה והפין לא מגיב. מה הדבר הראשון לבדוק?
+פתרון: שהופעל השעון של פורט B עם __HAL_RCC_GPIOB_CLK_ENABLE() לפני HAL_GPIO_Init. בלי שעון, הפורט לא פועל.
+
+שאלה 2: מה ההבדל בין Push-Pull ל־Open-Drain?
+פתרון: ב־Push-Pull הפין דוחף באופן אקטיבי גם HIGH וגם LOW. ב־Open-Drain הפין יכול רק למשוך ל־LOW או "לשחרר" את הקו, ו־HIGH מתקבל דרך נגד Pull-up. Open-Drain מאפשר לכמה התקנים לחלוק קו אחד, כמו ב־I2C, בלי קצר.
+
+שאלה 3: אפשר להפעיל פסיקות EXTI גם על PA3 וגם על PC3 באותו זמן?
+פתרון: לא. שני הפינים משתמשים בקו EXTI3, וכל קו EXTI מחובר בכל רגע לפורט אחד בלבד.
+
+שאלה 4: למה ב־Callback רק מסמנים דגל במקום להפעיל ישירות את הלוגיקה?
+פתרון: כדי שהפסיקה תהיה קצרה, לא תעכב פסיקות אחרות, ולא תקרא לפונקציות חוסמות כמו HAL_Delay. העבודה הארוכה מתבצעת בלולאה הראשית, או במשימה של RTOS.

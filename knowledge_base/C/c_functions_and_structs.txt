@@ -1,0 +1,160 @@
+C – פונקציות ומבנים (Functions and Structs)
+============================================
+
+1. הצהרה והגדרה של פונקציה
+---------------------------
+ב־C יש להבחין בין הצהרה (Declaration / Prototype) להגדרה (Definition):
+- ההצהרה מודיעה לקומפיילר על שם הפונקציה, טיפוס ההחזרה והפרמטרים.
+- ההגדרה מכילה את גוף הפונקציה.
+
+    #include <stdio.h>
+
+    int max_of(int a, int b);          /* Prototype */
+
+    int main(void) {
+        printf("%d\n", max_of(4, 9));  /* 9 */
+        return 0;
+    }
+
+    int max_of(int a, int b) {         /* Definition */
+        return (a > b) ? a : b;
+    }
+
+פונקציה שלא מחזירה ערך מוגדרת כ־void. פונקציה בלי פרמטרים נכתבת עם (void) בתקני C ישנים (C89 עד C17). שם, () ריק פירושו "פרמטרים לא ידועים". החל מ־C23, () ו־(void) שקולים.
+
+2. קובצי Header ופיצול קוד
+---------------------------
+בפרויקט אמיתי שמים את ההצהרות בקובץ .h ואת ההגדרות בקובץ .c:
+
+    /* math_utils.h */
+    #ifndef MATH_UTILS_H
+    #define MATH_UTILS_H
+    int max_of(int a, int b);
+    #endif
+
+    /* math_utils.c */
+    #include "math_utils.h"
+    int max_of(int a, int b) { return (a > b) ? a : b; }
+
+ה־Include Guard (#ifndef / #define / #endif) מונע הכללה כפולה של אותו Header באותה יחידת קומפילציה.
+
+3. משתנים static ותחום הגדרה
+----------------------------
+- משתנה מקומי בתוך פונקציה נוצר בכל קריאה ונעלם בסופה. הוא שמור בדרך כלל על המחסנית (Stack).
+- משתנה static בתוך פונקציה נוצר פעם אחת ושומר את ערכו בין קריאות:
+
+    int next_id(void) {
+        static int counter = 0;   /* מאותחל פעם אחת בלבד */
+        return ++counter;
+    }
+    /* next_id() מחזירה 1, אחר כך 2, אחר כך 3 ... */
+
+- פונקציה או משתנה גלובלי שמוגדרים static ברמת הקובץ נראים רק בתוך אותו קובץ .c (Internal Linkage). זו הדרך של C ל"הסתיר" מימוש.
+- extern מצהיר על משתנה גלובלי שמוגדר בקובץ אחר.
+
+4. רקורסיה (Recursion)
+-----------------------
+פונקציה שקוראת לעצמה. חובה שיהיה לה תנאי עצירה (Base Case):
+
+    unsigned long factorial(unsigned int n) {
+        if (n <= 1) return 1;
+        return n * factorial(n - 1);
+    }
+
+כל קריאה רקורסיבית תופסת מקום על המחסנית. רקורסיה עמוקה מדי גורמת ל־Stack Overflow. במיקרו־בקרים, שבהם המחסנית קטנה, נוטים להעדיף פתרונות איטרטיביים.
+
+5. מבנים (struct)
+------------------
+struct מקבץ כמה משתנים מטיפוסים שונים ליחידה אחת:
+
+    struct Student {
+        char name[32];
+        int id;
+        float average;
+    };
+
+    struct Student s1 = {"Dana", 1001, 91.5f};
+    s1.average = 93.0f;          /* גישה עם נקודה */
+
+typedef מאפשר לתת שם קצר לטיפוס:
+
+    typedef struct {
+        int x;
+        int y;
+    } Point;
+
+    Point p = {3, 4};
+
+גישה דרך מצביע נעשית עם האופרטור -> (שקול ל־(*ptr).field):
+
+    void move(Point *pt, int dx, int dy) {
+        pt->x += dx;
+        pt->y += dy;
+    }
+
+    move(&p, 1, -1);   /* p == {4, 3} */
+
+6. העברת struct לפונקציה
+-------------------------
+struct מועבר לפי ערך, כלומר כל המבנה מועתק. במבנים גדולים זה בזבוז זמן וזיכרון מחסנית. לכן מקובל להעביר מצביע:
+- const Student *s – כשהפונקציה רק קוראת.
+- Student *s – כשהפונקציה משנה.
+
+    float best_average(const struct Student *list, int count) {
+        float best = list[0].average;
+        for (int i = 1; i < count; i++) {
+            if (list[i].average > best) best = list[i].average;
+        }
+        return best;
+    }
+
+7. ריפוד וגודל של struct (Padding)
+-----------------------------------
+הקומפיילר עשוי להוסיף בתים ריקים (Padding) בין שדות, כדי שכל שדה יהיה מיושר (Aligned) לכתובת שמתאימה לגודלו. לכן sizeof של struct יכול להיות גדול מסכום גדלי השדות.
+
+    struct A { char c; int i; char d; };   /* לרוב 12 בתים בפלטפורמה שבה int הוא 4 בתים ומיושר ל־4 */
+    struct B { int i; char c; char d; };   /* לרוב 8 בתים */
+
+סידור השדות מהגדול לקטן מקטין בדרך כלל את הריפוד. הגדלים המדויקים תלויים בקומפיילר ובארכיטקטורה, ולכן אין להניח מבנה זיכרון מסוים בלי לבדוק עם sizeof ו־offsetof.
+
+8. enum ו־union
+----------------
+enum מגדיר קבוצת קבועים בעלי שם:
+    typedef enum { STATE_IDLE, STATE_RUNNING, STATE_ERROR } State;   /* 0, 1, 2 */
+
+union מאפשר לכמה שדות לחלוק את אותו זיכרון. הגודל שלו הוא גודל השדה הגדול ביותר (בתוספת ריפוד אפשרי):
+    union Data { int i; float f; unsigned char bytes[4]; };
+קריאה משדה שונה מהשדה האחרון שנכתב תלויה במימוש. השימוש הזה נפוץ בקוד Embedded, אבל דורש זהירות.
+
+9. מצביעים לפונקציות (Function Pointers)
+----------------------------------------
+    int add(int a, int b) { return a + b; }
+    int mul(int a, int b) { return a * b; }
+
+    int apply(int (*op)(int, int), int x, int y) {
+        return op(x, y);
+    }
+
+    apply(add, 3, 4);   /* 7 */
+    apply(mul, 3, 4);   /* 12 */
+
+מצביעים לפונקציות משמשים ל־Callbacks, למשל ב־qsort של הספרייה הסטנדרטית, ובטבלאות של מצבים (State Machines) במערכות משובצות.
+
+10. שאלות תרגול ופתרונות
+-------------------------
+שאלה 1: מה ההבדל בין s.x ל־p->x?
+פתרון: s.x משמש כש־s הוא משתנה מסוג struct. p->x משמש כש־p הוא מצביע ל־struct, והוא שקול ל־(*p).x.
+
+שאלה 2: מה יחזירו שלוש קריאות רצופות לפונקציה next_id מסעיף 3?
+פתרון: 1, 2, 3. המשתנה counter הוא static, ולכן הוא שומר את ערכו בין הקריאות.
+
+שאלה 3: כתבו struct בשם Rectangle עם width ו־height, ופונקציה שמחזירה את השטח שלו ומקבלת מצביע.
+פתרון:
+    typedef struct { double width; double height; } Rectangle;
+
+    double rect_area(const Rectangle *r) {
+        return r->width * r->height;
+    }
+
+שאלה 4: למה כדאי להעביר struct גדול לפי מצביע?
+פתרון: העברה לפי ערך מעתיקה את כל המבנה למחסנית. זה איטי ובזבזני, ובמיקרו־בקר עם מחסנית קטנה עלול לגרום ל־Stack Overflow. מצביע מעתיק רק כתובת, ו־const מבטיח שהפונקציה לא תשנה את הנתונים.

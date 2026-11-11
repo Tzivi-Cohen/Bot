@@ -1,0 +1,160 @@
+Python – עבודה עם קבצים וטיפול בחריגות (Files and Exceptions)
+==============================================================
+
+1. פתיחת קובץ עם with
+----------------------
+הדרך המומלצת לעבוד עם קבצים היא הפקודה with. היא סוגרת את הקובץ אוטומטית בסוף הבלוק, גם אם התרחשה שגיאה. מנגנון זה נקרא Context Manager.
+
+    with open("notes.txt", "w", encoding="utf-8") as f:
+        f.write("שורה ראשונה\n")
+        f.write("שורה שנייה\n")
+
+מצבי פתיחה (Modes) נפוצים:
+- "r" – קריאה (ברירת המחדל). אם הקובץ לא קיים – FileNotFoundError.
+- "w" – כתיבה. יוצר קובץ חדש, ואם הקובץ קיים – מוחק את התוכן הקודם.
+- "a" – הוספה (Append) לסוף הקובץ.
+- "x" – יצירת קובץ חדש בלבד. אם הקובץ קיים – FileExistsError.
+- תוספת "b" (למשל "rb") – עבודה בבינארי, עם bytes במקום str.
+
+חשוב לציין encoding="utf-8" בקבצי טקסט, במיוחד כשיש בהם עברית. בלי פרמטר זה, Python משתמשת בקידוד ברירת המחדל של מערכת ההפעלה, וב־Windows הוא עשוי להיות שונה מ־UTF-8.
+
+2. קריאת קובץ
+--------------
+    with open("notes.txt", encoding="utf-8") as f:
+        content = f.read()          # כל הקובץ כמחרוזת אחת
+
+    with open("notes.txt", encoding="utf-8") as f:
+        for line in f:              # קריאה שורה אחר שורה – חוסכת זיכרון בקבצים גדולים
+            print(line.rstrip("\n"))
+
+    with open("notes.txt", encoding="utf-8") as f:
+        lines = f.readlines()       # רשימה של שורות (כולל תו ירידת השורה)
+
+3. pathlib – עבודה נוחה עם נתיבים
+----------------------------------
+    from pathlib import Path
+
+    folder = Path("data")
+    folder.mkdir(exist_ok=True)           # יוצר תיקייה אם אינה קיימת
+    path = folder / "scores.txt"          # האופרטור / מחבר נתיבים
+    path.write_text("90\n85\n77\n", encoding="utf-8")
+    text = path.read_text(encoding="utf-8")
+    print(path.exists(), path.suffix)     # True .txt
+
+    for p in folder.glob("*.txt"):
+        print(p.name)
+
+4. קובצי CSV ו־JSON
+--------------------
+    import csv
+    with open("grades.csv", "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["name", "grade"])
+        writer.writerow(["Dana", 92])
+
+    with open("grades.csv", newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            print(row["name"], int(row["grade"]))
+
+הפרמטר newline="" נדרש במודול csv כדי למנוע שורות ריקות מיותרות ב־Windows.
+
+    import json
+    data = {"name": "Dana", "courses": ["Python", "C"]}
+    with open("data.json", "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+    with open("data.json", encoding="utf-8") as f:
+        loaded = json.load(f)
+
+ensure_ascii=False שומר עברית כטקסט קריא, במקום רצפים כמו ד.
+
+5. חריגות (Exceptions)
+-----------------------
+חריגה היא אירוע שגיאה בזמן ריצה. אם לא מטפלים בה, התוכנית נעצרת ומודפס Traceback.
+חריגות נפוצות:
+- ValueError – ערך לא מתאים, למשל int("abc").
+- TypeError – פעולה על טיפוס לא מתאים, למשל "5" + 3.
+- ZeroDivisionError – חלוקה באפס.
+- KeyError – מפתח שאינו קיים במילון.
+- IndexError – אינדקס מחוץ לטווח הרשימה.
+- FileNotFoundError – קובץ שאינו קיים.
+
+6. try / except / else / finally
+---------------------------------
+    def read_number(path):
+        try:
+            with open(path, encoding="utf-8") as f:
+                value = int(f.read().strip())
+        except FileNotFoundError:
+            print("הקובץ לא נמצא")
+            return None
+        except ValueError as error:
+            print(f"תוכן לא תקין: {error}")
+            return None
+        else:
+            print("הקריאה הצליחה")     # רץ רק אם לא הייתה חריגה
+            return value
+        finally:
+            print("סיום ניסיון הקריאה")  # רץ תמיד
+
+כללים:
+- תפסו חריגות ספציפיות. except Exception כללי מסתיר באגים, ו־except: ריק תופס גם KeyboardInterrupt.
+- סדר ה־except חשוב: חריגה ספציפית לפני חריגה כללית יותר.
+- finally מתאים לשחרור משאבים. עם with לרוב אין בו צורך.
+
+7. זריקת חריגות (raise) וחריגות מותאמות
+----------------------------------------
+    class InsufficientFundsError(Exception):
+        """נזרקת כשאין מספיק יתרה בחשבון."""
+
+    def withdraw(balance, amount):
+        if amount <= 0:
+            raise ValueError("הסכום חייב להיות חיובי")
+        if amount > balance:
+            raise InsufficientFundsError(f"חסרים {amount - balance} ש\"ח")
+        return balance - amount
+
+    try:
+        withdraw(100, 150)
+    except InsufficientFundsError as e:
+        print("שגיאה:", e)
+
+אפשר לשרשר חריגות עם raise NewError(...) from original_error, כדי לשמור את הסיבה המקורית ב־Traceback.
+
+8. EAFP מול LBYL
+-----------------
+ב־Python מקובל הסגנון EAFP – "Easier to Ask Forgiveness than Permission": מנסים לבצע את הפעולה ומטפלים בחריגה אם היא נכשלה. הסגנון ההפוך, LBYL – "Look Before You Leap", בודק תנאים מראש.
+
+    # LBYL
+    if key in d:
+        value = d[key]
+    # EAFP
+    try:
+        value = d[key]
+    except KeyError:
+        value = 0
+
+ב־LBYL על קבצים עלול להיווצר Race Condition: הקובץ יכול להימחק בין הבדיקה לבין הפתיחה.
+
+9. שאלות תרגול ופתרונות
+------------------------
+שאלה 1: מה ההבדל בין המצב "w" למצב "a"?
+פתרון: "w" מוחק את התוכן הקיים וכותב מההתחלה. "a" מוסיף לסוף הקובץ ושומר את התוכן הקיים.
+
+שאלה 2: כתבו פונקציה שמחזירה את ממוצע המספרים בקובץ (מספר אחד בכל שורה). התעלמו משורות לא תקינות והחזירו None אם אין מספרים.
+פתרון:
+    def average_from_file(path):
+        values = []
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    values.append(float(line))
+                except ValueError:
+                    continue
+        return sum(values) / len(values) if values else None
+
+שאלה 3: מתי רץ בלוק else של try?
+פתרון: רק אם הקוד בבלוק try הסתיים בלי חריגה. finally, לעומתו, רץ תמיד.
+
+שאלה 4: למה כדאי להשתמש ב־with במקום open ו־close ידניים?
+פתרון: with מבטיח שהקובץ ייסגר גם אם נזרקה חריגה באמצע. עם close ידני, חריגה לפני הקריאה ל־close משאירה את הקובץ פתוח.

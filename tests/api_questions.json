@@ -1,0 +1,46 @@
+{
+  "_note": "Expected results only - written BEFORE any real run. expected_source = file that should appear among the Top-3 retrieved chunks. expect_no_answer = true when the documents do not cover the question. Question 5 must be filled in after uploading a real document through the Streamlit UI.",
+  "questions": [
+    {
+      "id": 1,
+      "type": "תשובה שמופיעה במפורש במסמך Python",
+      "question": "מה ההבדל בין האופרטור / לאופרטור // ב־Python?",
+      "expected_source": "python_basics_variables_conditions_loops.txt",
+      "expected_answer": "/ מחזיר תמיד float (7 / 2 == 3.5); // הוא חלוקת שלמים שמעגלת כלפי מטה (7 // 2 == 3, -7 // 2 == -4)",
+      "expect_no_answer": false
+    },
+    {
+      "id": 2,
+      "type": "ניסוח שונה מהטקסט המקורי – C++",
+      "question": "למה עדיף לתת ערכים לשדות של אובייקט לפני הסוגריים המסולסלים של הבנאי, ולא בתוך גוף הבנאי?",
+      "expected_source": "cpp_classes_constructors_destructors.txt",
+      "expected_answer": "רשימת אתחול (Member Initializer List): אתחול ישיר בלי יצירה והשמה כפולה; שדות const ו־Reference חייבים להיות מאותחלים בה",
+      "expect_no_answer": false
+    },
+    {
+      "id": 3,
+      "type": "אחזור ממסמך Arduino או STM32",
+      "question": "באילו פינים של Arduino UNO אפשר להשתמש ב־analogWrite, ומה תדר ה־PWM בהם?",
+      "expected_source": "arduino_analog_sensors_pwm.txt",
+      "expected_answer": "פינים 3, 5, 6, 9, 10, 11; כ־490Hz, ובפינים 5 ו־6 כ־980Hz",
+      "expect_no_answer": false
+    },
+    {
+      "id": 4,
+      "type": "תשובה שאינה נמצאת במאגר",
+      "question": "מהי מתודולוגיית Scrum ומה תפקיד ה־Product Owner?",
+      "expected_source": null,
+      "expected_answer": "לא מצאתי מידע מספיק במסמכים כדי לענות על השאלה.",
+      "expect_no_answer": true
+    },
+    {
+      "id": 5,
+      "type": "שאלה על מסמך חדש שהועלה דרך הממשק",
+      "question": "מה ההבדל בין RAG לבין Fine-tuning?",
+      "expected_source": "LLM.txt",
+      "expected_answer": "RAG מתאים למידע משתנה ולציטוט מקורות, ואפשר לעדכן מסמכים בלי לאמן מודל; Fine-tuning מתאים לשינוי התנהגות, סגנון או ביצוע משימה, ודורש תהליך אימון ועדכון",
+      "expect_no_answer": false,
+      "_how_to": "LLM.txt was uploaded through the Streamlit UI (uploads/, not in Git). Run: python tests/manual_api_check.py --only 5 (after approval)."
+    }
+  ]
+}

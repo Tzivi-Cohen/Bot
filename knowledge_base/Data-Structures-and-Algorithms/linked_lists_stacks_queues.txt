@@ -1,0 +1,191 @@
+מבני נתונים – רשימות מקושרות, מחסניות ותורים
+================================================
+
+1. סיבוכיות זמן (Big-O) בקצרה
+------------------------------
+סימון Big-O מתאר איך זמן הריצה (או הזיכרון) גדל כשגודל הקלט n גדל, בלי קבועים:
+- O(1) – זמן קבוע, למשל גישה לאיבר במערך לפי אינדקס.
+- O(log n) – לוגריתמי, למשל חיפוש בינארי.
+- O(n) – לינארי, למשל מעבר על כל האיברים.
+- O(n log n) – למשל מיון מיזוג.
+- O(n^2) – ריבועי, למשל שתי לולאות מקוננות על אותו קלט.
+
+2. רשימה מקושרת (Linked List)
+-----------------------------
+רשימה מקושרת בנויה מצמתים (Nodes). כל צומת מכיל ערך ומצביע לצומת הבא. בניגוד למערך, הצמתים לא חייבים להיות רציפים בזיכרון.
+- Singly Linked List – כל צומת מצביע רק לבא אחריו.
+- Doubly Linked List – כל צומת מצביע גם לבא וגם לקודם.
+
+מימוש בסיסי ב־C:
+
+    #include <stdlib.h>
+
+    typedef struct Node {
+        int value;
+        struct Node *next;
+    } Node;
+
+    /* הוספה בראש הרשימה – O(1) */
+    Node *push_front(Node *head, int value) {
+        Node *n = malloc(sizeof *n);
+        if (n == NULL) return head;   /* כישלון הקצאה – הרשימה לא משתנה */
+        n->value = value;
+        n->next = head;
+        return n;                     /* הראש החדש */
+    }
+
+    /* חיפוש – O(n) */
+    Node *find(Node *head, int value) {
+        for (Node *cur = head; cur != NULL; cur = cur->next) {
+            if (cur->value == value) return cur;
+        }
+        return NULL;
+    }
+
+    /* מחיקת הצומת הראשון עם הערך – O(n) */
+    Node *remove_value(Node *head, int value) {
+        Node **link = &head;          /* מצביע למצביע – חוסך טיפול מיוחד בראש */
+        while (*link != NULL) {
+            if ((*link)->value == value) {
+                Node *victim = *link;
+                *link = victim->next;
+                free(victim);
+                break;
+            }
+            link = &(*link)->next;
+        }
+        return head;
+    }
+
+    /* שחרור כל הרשימה */
+    void free_list(Node *head) {
+        while (head != NULL) {
+            Node *next = head->next;
+            free(head);
+            head = next;
+        }
+    }
+
+השוואה בין מערך לרשימה מקושרת:
+| פעולה                     | מערך דינמי        | רשימה מקושרת          |
+| גישה לפי אינדקס           | O(1)               | O(n)                   |
+| הוספה או מחיקה בראש       | O(n)               | O(1)                   |
+| הוספה בסוף                | O(1) בממוצע       | O(1) אם שומרים מצביע לזנב |
+| הוספה באמצע (כשהמיקום ידוע) | O(n) בגלל הזזה | O(1)                   |
+| ניצול Cache                | טוב (רציף)        | חלש (קפיצות בזיכרון)  |
+
+היפוך רשימה מקושרת – שאלת ראיון קלאסית, O(n) זמן ו־O(1) זיכרון:
+
+    Node *reverse(Node *head) {
+        Node *prev = NULL;
+        while (head != NULL) {
+            Node *next = head->next;
+            head->next = prev;
+            prev = head;
+            head = next;
+        }
+        return prev;
+    }
+
+3. מחסנית (Stack) – LIFO
+-------------------------
+מחסנית פועלת לפי העיקרון Last In, First Out: האיבר האחרון שנכנס הוא הראשון שיוצא.
+הפעולות: push (הכנסה לראש), pop (הוצאה מהראש), peek/top (הצצה בראש), is_empty. כולן O(1).
+
+שימושים:
+- מחסנית הקריאות (Call Stack) של תוכנית.
+- פעולת Undo בעורכים.
+- בדיקת איזון סוגריים.
+- הערכת ביטויים, ומעבר עומק (DFS) בגרפים.
+
+בדיקת סוגריים מאוזנים ב־Python, כשרשימה משמשת כמחסנית:
+
+    def is_balanced(text):
+        pairs = {")": "(", "]": "[", "}": "{"}
+        stack = []
+        for ch in text:
+            if ch in "([{":
+                stack.append(ch)
+            elif ch in pairs:
+                if not stack or stack.pop() != pairs[ch]:
+                    return False
+        return not stack
+
+    is_balanced("a[b(c)]{d}")   # True
+    is_balanced("(]")           # False
+    is_balanced("((")           # False
+
+מחסנית על בסיס מערך בגודל קבוע ב־C (מתאים גם למיקרו־בקרים, בלי הקצאה דינמית):
+
+    #define STACK_CAP 32
+    typedef struct { int items[STACK_CAP]; int top; } Stack;   /* top = מספר האיברים */
+
+    int stack_push(Stack *s, int v) {
+        if (s->top == STACK_CAP) return -1;   /* Overflow */
+        s->items[s->top++] = v;
+        return 0;
+    }
+    int stack_pop(Stack *s, int *out) {
+        if (s->top == 0) return -1;           /* Underflow */
+        *out = s->items[--s->top];
+        return 0;
+    }
+
+4. תור (Queue) – FIFO
+----------------------
+תור פועל לפי העיקרון First In, First Out: הראשון שנכנס הוא הראשון שיוצא.
+הפעולות: enqueue (הכנסה לסוף) ו־dequeue (הוצאה מההתחלה). במימוש נכון שתיהן O(1).
+
+ב־Python לא משתמשים ב־list.pop(0) לתור, כי היא O(n). משתמשים ב־collections.deque:
+
+    from collections import deque
+    q = deque()
+    q.append("a")        # enqueue
+    q.append("b")
+    q.popleft()          # 'a' – dequeue ב־O(1)
+
+שימושים: תורי משימות, חוצצי תקשורת, ומעבר רוחב (BFS) בגרפים.
+
+5. תור מעגלי (Circular Buffer / Ring Buffer)
+---------------------------------------------
+מימוש של תור במערך בגודל קבוע. האינדקסים "מסתובבים" חזרה להתחלה. זה מבנה נפוץ מאוד בקושחה, למשל לאגירת בתים שמתקבלים ב־UART בתוך פסיקה (Interrupt).
+
+    #define RB_SIZE 64
+    typedef struct {
+        unsigned char data[RB_SIZE];
+        unsigned int head;    /* מקום הכתיבה הבא */
+        unsigned int tail;    /* מקום הקריאה הבא */
+        unsigned int count;
+    } RingBuffer;
+
+    int rb_put(RingBuffer *rb, unsigned char byte) {
+        if (rb->count == RB_SIZE) return -1;          /* מלא */
+        rb->data[rb->head] = byte;
+        rb->head = (rb->head + 1) % RB_SIZE;
+        rb->count++;
+        return 0;
+    }
+
+    int rb_get(RingBuffer *rb, unsigned char *out) {
+        if (rb->count == 0) return -1;                /* ריק */
+        *out = rb->data[rb->tail];
+        rb->tail = (rb->tail + 1) % RB_SIZE;
+        rb->count--;
+        return 0;
+    }
+
+הערה: כשיצרן אחד (פסיקה) וצרכן אחד (לולאה ראשית) ניגשים לאותו Buffer, המשתנה count משותף לשניהם, ונדרשת הגנה מתנאי מרוץ (Race Condition). הפתרונות: נטרול פסיקות זמני סביב העדכון, או מימוש שבו head מתעדכן רק אצל היצרן ו־tail רק אצל הצרכן, בלי count משותף. גם אז יש להקפיד על volatile ועל קריאה וכתיבה אטומיות של האינדקסים.
+
+6. שאלות תרגול ופתרונות
+------------------------
+שאלה 1: מה הסיבוכיות של גישה לאיבר ה־k ברשימה מקושרת, ולמה?
+פתרון: O(k), ובמקרה הגרוע O(n). צריך לעבור צומת אחר צומת מהראש, כי אין גישה ישירה לפי אינדקס.
+
+שאלה 2: איזה מבנה נתונים מתאים למימוש Undo, ואיזה לתור הדפסות?
+פתרון: ל־Undo מתאימה מחסנית (LIFO), כי מבטלים קודם את הפעולה האחרונה. לתור הדפסות מתאים תור (FIFO), כי מדפיסים לפי סדר ההגעה.
+
+שאלה 3: לאחר הפעולות push(1), push(2), pop(), push(3), push(4), pop() – מה בראש המחסנית?
+פתרון: 3. המצב מתפתח כך: [1] → [1,2] → [1] → [1,3] → [1,3,4] → [1,3].
+
+שאלה 4: למה ב־Ring Buffer משתמשים לרוב בגודל שהוא חזקה של 2?
+פתרון: כך אפשר להחליף את פעולת המודולו (% RB_SIZE) בפעולת AND מהירה ((index + 1) & (RB_SIZE - 1)). במיקרו־בקרים בלי יחידת חילוק בחומרה זה חוסך זמן חישוב.

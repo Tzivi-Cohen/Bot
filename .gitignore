@@ -1,0 +1,41 @@
+# Virtual environment
+.venv/
+venv/
+
+# Secrets - never commit the real key
+.env
+.streamlit/secrets.toml
+
+# Python / test caches
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local vector index (rebuilt locally from knowledge_base/)
+storage/
+
+# Private documents uploaded through the UI
+uploads/
+
+# Temporary / editor files
+*.tmp
+*.log
+~$*
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# Course reference material (not part of the system)
+send/
+
+# Raw reports of paid API runs (may quote private uploaded documents)
+tests/results/
+
+# Local work log (not part of the submission)
+WORK_STATUS.md
+
+# Development-tool settings and backups
+.claude/
+*.bak
+*.orig

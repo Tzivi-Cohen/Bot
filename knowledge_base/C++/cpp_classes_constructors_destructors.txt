@@ -1,0 +1,159 @@
+C++ – מחלקות, Constructors ו־Destructors
+=========================================
+
+1. מחלקה (class) ואנקפסולציה
+----------------------------
+מחלקה מגדירה טיפוס חדש שמאחד נתונים (Data Members) ופונקציות (Member Functions / Methods).
+הרשאות גישה (Access Specifiers):
+- private – נגיש רק מתוך המחלקה. זו ברירת המחדל ב־class.
+- public – נגיש מכל מקום.
+- protected – נגיש מהמחלקה וממחלקות שיורשות ממנה.
+ההבדל היחיד בין class ל־struct ב־C++ הוא ברירת המחדל: ב־struct ההרשאה היא public.
+
+    #include <iostream>
+    #include <string>
+
+    class Counter {
+    private:
+        int value_;
+    public:
+        Counter() : value_(0) {}            // Default constructor
+        void increment() { ++value_; }
+        int value() const { return value_; } // const – לא משנה את האובייקט
+    };
+
+    int main() {
+        Counter c;
+        c.increment();
+        c.increment();
+        std::cout << c.value() << '\n';   // 2
+    }
+
+Method שמסומנת const מתחייבת לא לשנות את מצב האובייקט, ורק Methods כאלה אפשר לקרוא דרך אובייקט const.
+
+2. Constructor – אתחול אובייקט
+------------------------------
+Constructor הוא פונקציה עם שם המחלקה וללא טיפוס החזרה. הוא רץ אוטומטית כשנוצר אובייקט.
+
+רשימת אתחול (Member Initializer List) היא הדרך המומלצת לאתחל שדות:
+
+    class Student {
+        std::string name_;
+        int id_;
+    public:
+        Student(const std::string& name, int id) : name_(name), id_(id) {}
+    };
+
+למה רשימת אתחול עדיפה על השמה בגוף ה־Constructor?
+- השדות מאותחלים ישירות, ולא נוצרים קודם בברירת מחדל ואחר כך מקבלים השמה.
+- שדות const ושדות מסוג Reference חייבים להיות מאותחלים ברשימת האתחול.
+- סדר האתחול בפועל הוא סדר ההצהרה על השדות במחלקה, ולא הסדר שבו הם כתובים ברשימה.
+
+סוגי Constructors:
+- Default Constructor – ללא פרמטרים. אם לא הגדרתם אף Constructor, הקומפיילר יוצר אחד אוטומטית.
+- Parameterized Constructor – עם פרמטרים.
+- Copy Constructor – T(const T& other). יוצר עותק של אובייקט קיים.
+- Move Constructor – T(T&& other) (מ־C++11). "גונב" משאבים מאובייקט זמני במקום להעתיק אותם.
+
+explicit מונע המרה מרומזת לא רצויה:
+    class Meters {
+    public:
+        explicit Meters(double v) : value(v) {}
+        double value;
+    };
+    // Meters m = 5.0;   // שגיאת קומפילציה בזכות explicit
+    Meters m(5.0);       // תקין
+
+3. Destructor – ניקוי משאבים
+----------------------------
+Destructor נכתב ~ClassName(), בלי פרמטרים ובלי טיפוס החזרה. הוא רץ אוטומטית כשהאובייקט מסיים את חייו:
+- אובייקט מקומי – ביציאה מהבלוק (Scope).
+- אובייקט שנוצר עם new – כשקוראים ל־delete.
+
+    class Logger {
+        std::string name_;
+    public:
+        explicit Logger(const std::string& name) : name_(name) {
+            std::cout << "open " << name_ << '\n';
+        }
+        ~Logger() {
+            std::cout << "close " << name_ << '\n';
+        }
+    };
+
+    int main() {
+        Logger a("A");
+        {
+            Logger b("B");
+        }               // כאן מודפס close B
+        std::cout << "end of main\n";
+    }                   // כאן מודפס close A
+
+הפלט: open A, open B, close B, end of main, close A.
+אובייקטים מקומיים נהרסים בסדר הפוך לסדר יצירתם.
+
+4. RAII – Resource Acquisition Is Initialization
+------------------------------------------------
+העיקרון המרכזי של ניהול משאבים ב־C++: המשאב (זיכרון, קובץ, Mutex) נלקח ב־Constructor ומשוחרר ב־Destructor. כך השחרור מובטח, גם כשיש return מוקדם וגם כשנזרקת חריגה.
+דוגמאות מהספרייה הסטנדרטית:
+- std::vector ו־std::string – מנהלים זיכרון.
+- std::unique_ptr ו־std::shared_ptr – מצביעים חכמים (Smart Pointers).
+- std::lock_guard – נועל Mutex ומשחרר אותו ביציאה מהבלוק.
+- std::ifstream – סוגר את הקובץ אוטומטית.
+
+    #include <memory>
+    void demo() {
+        auto p = std::make_unique<Student>("Dana", 1001);
+        // אין צורך ב־delete – הזיכרון ישוחרר אוטומטית ביציאה מהפונקציה
+    }
+
+5. new ו־delete
+----------------
+    int* x = new int(5);
+    delete x;                 // אובייקט בודד
+    int* arr = new int[10];
+    delete[] arr;             // מערך – חובה delete[]
+
+ערבוב new[] עם delete (בלי סוגריים) הוא Undefined Behavior. ב־C++ מודרני כמעט אין צורך ב־new ו־delete ישירים: משתמשים ב־std::vector וב־std::make_unique.
+
+6. this ו־Static Members
+------------------------
+- this הוא מצביע לאובייקט הנוכחי. הוא שימושי כשיש התנגשות שמות, או להחזרת *this לשרשור קריאות.
+- static Member שייך למחלקה ולא לאובייקט מסוים:
+
+    class Widget {
+        static int count_;
+    public:
+        Widget()  { ++count_; }
+        ~Widget() { --count_; }
+        static int count() { return count_; }
+    };
+    int Widget::count_ = 0;   // הגדרה מחוץ למחלקה (עד C++17; מ־C++17 אפשר inline static)
+
+7. שאלות תרגול ופתרונות
+------------------------
+שאלה 1: מה ידפיס הקוד?
+    Logger x("X");
+    { Logger y("Y"); Logger z("Z"); }
+פתרון: open X, open Y, open Z, close Z, close Y. ‏close X יודפס מאוחר יותר, כש־x ייצא מה־Scope שלו. בתוך הבלוק, Z נוצר אחרון ולכן נהרס ראשון.
+
+שאלה 2: למה שדה מסוג const int חייב להיות מאותחל ברשימת האתחול?
+פתרון: אסור לבצע השמה לשדה const אחרי שנוצר. גוף ה־Constructor רץ אחרי שכל השדות כבר נוצרו, ולכן האתחול היחיד האפשרי הוא ברשימת האתחול.
+
+שאלה 3: כתבו מחלקה Timer שמדפיסה בהריסתה כמה מילישניות עברו מאז נוצרה.
+פתרון:
+    #include <chrono>
+    #include <iostream>
+    class Timer {
+        std::chrono::steady_clock::time_point start_;
+    public:
+        Timer() : start_(std::chrono::steady_clock::now()) {}
+        ~Timer() {
+            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - start_).count();
+            std::cout << ms << " ms\n";
+        }
+    };
+
+שאלה 4: מה ההבדל בין class ל־struct ב־C++?
+פתרון: ההבדל היחיד הוא ברירת המחדל של הרשאת הגישה ושל הירושה: private ב־class ו־public ב־struct. בכל השאר הם זהים.

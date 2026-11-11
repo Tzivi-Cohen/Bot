@@ -1,0 +1,194 @@
+Python – פונקציות ומחלקות (Functions and Classes)
+==================================================
+
+1. הגדרת פונקציה
+-----------------
+פונקציה מוגדרת עם המילה def. return מחזיר ערך. פונקציה בלי return מחזירה None.
+
+    def area_of_rectangle(width, height):
+        """מחזירה את שטח המלבן."""
+        return width * height
+
+    print(area_of_rectangle(3, 4))   # 12
+
+המחרוזת שבשורה הראשונה של הפונקציה נקראת Docstring. היא מתעדת את הפונקציה, ואפשר לקרוא אותה עם help(area_of_rectangle).
+
+2. סוגי פרמטרים
+----------------
+- פרמטרים לפי מיקום (Positional): area_of_rectangle(3, 4)
+- פרמטרים לפי שם (Keyword): area_of_rectangle(height=4, width=3)
+- ערך ברירת מחדל (Default):
+
+    def greet(name, greeting="שלום"):
+        return f"{greeting}, {name}!"
+
+    greet("Dana")             # 'שלום, Dana!'
+    greet("Dana", "בוקר טוב")  # 'בוקר טוב, Dana!'
+
+- *args אוסף כמות לא קבועה של ארגומנטים לפי מיקום לתוך tuple.
+- **kwargs אוסף ארגומנטים לפי שם לתוך dict.
+
+    def summary(*args, **kwargs):
+        print(args)     # (1, 2, 3)
+        print(kwargs)   # {'unit': 'cm'}
+
+    summary(1, 2, 3, unit="cm")
+
+מלכודת חשובה – ערך ברירת מחדל שניתן לשינוי (Mutable Default Argument):
+ערך ברירת המחדל נוצר פעם אחת בלבד, בזמן הגדרת הפונקציה, ולא בכל קריאה.
+
+    def add_item(item, items=[]):     # שגוי!
+        items.append(item)
+        return items
+
+    add_item(1)   # [1]
+    add_item(2)   # [1, 2]  – הרשימה נשמרה בין הקריאות
+
+הפתרון המקובל:
+    def add_item(item, items=None):
+        if items is None:
+            items = []
+        items.append(item)
+        return items
+
+3. החזרת כמה ערכים
+-------------------
+פונקציה יכולה להחזיר tuple, ואפשר "לפרק" אותו (Unpacking):
+
+    def min_max(values):
+        return min(values), max(values)
+
+    low, high = min_max([4, 9, 1, 7])   # low = 1, high = 9
+
+4. תחום הגדרה (Scope)
+----------------------
+משתנה שמוגדר בתוך פונקציה הוא מקומי (Local) ואינו קיים מחוץ לה. Python מחפשת שמות לפי הסדר LEGB: Local, Enclosing, Global, Built-in.
+כדי לשנות משתנה גלובלי מתוך פונקציה יש להצהיר global. ברוב המקרים עדיף להחזיר ערך במקום לשנות משתנה גלובלי.
+
+5. פונקציות כערכים ו־lambda
+----------------------------
+פונקציות ב־Python הן אובייקטים: אפשר להעביר אותן כפרמטר או לשמור אותן במשתנה.
+lambda היא פונקציה אנונימית קצרה שמכילה ביטוי אחד:
+
+    students = [("Dana", 88), ("Avi", 95), ("Noa", 72)]
+    students.sort(key=lambda s: s[1], reverse=True)
+    # [('Avi', 95), ('Dana', 88), ('Noa', 72)]
+
+6. מחלקות ואובייקטים (Classes and Objects)
+------------------------------------------
+מחלקה (Class) היא תבנית שמגדירה נתונים (Attributes) ופעולות (Methods). אובייקט (Object/Instance) הוא מופע של המחלקה.
+
+    class BankAccount:
+        bank_name = "StudyBank"          # Class attribute – משותף לכל המופעים
+
+        def __init__(self, owner, balance=0):
+            self.owner = owner            # Instance attribute
+            self.balance = balance
+
+        def deposit(self, amount):
+            if amount <= 0:
+                raise ValueError("הסכום חייב להיות חיובי")
+            self.balance += amount
+
+        def withdraw(self, amount):
+            if amount > self.balance:
+                raise ValueError("אין מספיק יתרה")
+            self.balance -= amount
+
+        def __str__(self):
+            return f"{self.owner}: {self.balance} ש\"ח"
+
+    acc = BankAccount("Dana", 100)
+    acc.deposit(50)
+    print(acc)          # Dana: 150 ש"ח
+
+הסברים:
+- __init__ הוא ה־Constructor: הוא רץ אוטומטית כשנוצר אובייקט חדש.
+- self הוא הפרמטר הראשון בכל Method, והוא מייצג את האובייקט הנוכחי. Python מעבירה אותו אוטומטית.
+- __str__ קובעת איך האובייקט יוצג ב־print. __repr__ מיועדת לייצוג טכני לצורכי Debug.
+
+7. ירושה (Inheritance)
+-----------------------
+מחלקה יורשת מקבלת את כל ה־Attributes וה־Methods של מחלקת הבסיס, ויכולה להוסיף או לדרוס (Override) אותם.
+
+    class SavingsAccount(BankAccount):
+        def __init__(self, owner, balance=0, interest_rate=0.02):
+            super().__init__(owner, balance)   # קריאה ל־Constructor של מחלקת הבסיס
+            self.interest_rate = interest_rate
+
+        def add_interest(self):
+            self.balance += self.balance * self.interest_rate
+
+    s = SavingsAccount("Avi", 1000, 0.05)
+    s.add_interest()
+    print(s.balance)                      # 1050.0
+    print(isinstance(s, BankAccount))     # True
+
+8. אנקפסולציה (Encapsulation) ו־property
+-----------------------------------------
+ב־Python אין private אמיתי. לפי המוסכמה, שם שמתחיל בקו תחתון אחד (_balance) מסמן "לשימוש פנימי". שני קווים תחתונים (__balance) מפעילים Name Mangling, שמקשה על גישה מבחוץ.
+@property מאפשר לגשת ל־Method כאילו הוא Attribute, ולהוסיף בדיקות תקינות:
+
+    class Temperature:
+        def __init__(self, celsius):
+            self.celsius = celsius
+
+        @property
+        def celsius(self):
+            return self._celsius
+
+        @celsius.setter
+        def celsius(self, value):
+            if value < -273.15:
+                raise ValueError("נמוך מהאפס המוחלט")
+            self._celsius = value
+
+        @property
+        def fahrenheit(self):
+            return self._celsius * 9 / 5 + 32
+
+    t = Temperature(25)
+    print(t.fahrenheit)   # 77.0
+
+9. dataclass
+-------------
+למחלקות שמחזיקות בעיקר נתונים, המודול dataclasses יוצר אוטומטית __init__, __repr__ ו־__eq__:
+
+    from dataclasses import dataclass
+
+    @dataclass
+    class Point:
+        x: float
+        y: float
+
+    p = Point(1, 2)
+    print(p)              # Point(x=1, y=2)
+    print(p == Point(1, 2))  # True
+
+10. שאלות תרגול ופתרונות
+-------------------------
+שאלה 1: מה יודפס, ולמה?
+    def f(x, lst=[]):
+        lst.append(x)
+        return len(lst)
+    print(f(1), f(2), f(3))
+פתרון: 1 2 3. רשימת ברירת המחדל נוצרת פעם אחת ומשותפת לכל הקריאות.
+
+שאלה 2: כתבו מחלקה Rectangle עם width ו־height, Method בשם area, ו־Method בשם is_square.
+פתרון:
+    class Rectangle:
+        def __init__(self, width, height):
+            self.width = width
+            self.height = height
+
+        def area(self):
+            return self.width * self.height
+
+        def is_square(self):
+            return self.width == self.height
+
+שאלה 3: למה קוראים ל־super().__init__ בתוך מחלקה יורשת?
+פתרון: כדי שהאתחול של מחלקת הבסיס ירוץ (למשל יצירת owner ו־balance). בלי הקריאה, ה־Attributes של מחלקת הבסיס לא ייווצרו באובייקט.
+
+שאלה 4: מה ההבדל בין Class Attribute ל־Instance Attribute?
+פתרון: Class Attribute מוגדר בגוף המחלקה ומשותף לכל המופעים. Instance Attribute מוגדר דרך self (בדרך כלל ב־__init__) ושייך לאובייקט אחד בלבד.

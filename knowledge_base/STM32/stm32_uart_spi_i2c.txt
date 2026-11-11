@@ -1,0 +1,136 @@
+STM32 – תקשורת UART, ‏SPI ו־I2C עם HAL
+========================================
+
+הערה: חתימות הפונקציות לקוחות מקוד המקור של ספריית HAL למשפחת STM32F4 (stm32f4xx_hal_uart.h, ‏_spi.h, ‏_i2c.h). במשפחות אחרות החתימות דומות מאוד, אבל יש לבדוק בגרסת ה־HAL שבפרויקט. הפינים, מספרי ה־UART והחיבור ל־USB תלויים בלוח.
+
+1. השוואה בין שלושת הפרוטוקולים
+--------------------------------
+| תכונה        | UART                 | SPI                          | I2C                         |
+| סוג          | אסינכרוני            | סינכרוני (שעון משותף)       | סינכרוני (שעון משותף)       |
+| קווים        | TX, ‏RX (+GND)        | SCK, MOSI, MISO, CS לכל התקן | SDA, SCL (+ נגדי Pull-up)   |
+| התקנים       | נקודה לנקודה         | Master אחד, כמה Slaves       | כמה התקנים לפי כתובת        |
+| כיוון        | Full Duplex          | Full Duplex                  | Half Duplex                 |
+| מהירות טיפוסית | עד מאות kbps–Mbps | עד עשרות MHz (תלוי בהתקן)   | 100kHz / 400kHz (ויש מהירים יותר) |
+
+2. UART
+--------
+UART שולח מסגרות: ביט התחלה, 8 ביטי נתונים (בדרך כלל), ביט זוגיות אופציונלי, וביט עצירה. שני הצדדים חייבים להסכים על Baud Rate ועל מבנה המסגרת. מחברים TX ל־RX ו־RX ל־TX, עם GND משותף.
+
+חתימות (מתוך stm32f4xx_hal_uart.h):
+    HAL_StatusTypeDef HAL_UART_Transmit(UART_HandleTypeDef *huart, const uint8_t *pData, uint16_t Size, uint32_t Timeout);
+    HAL_StatusTypeDef HAL_UART_Receive(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size, uint32_t Timeout);
+    HAL_StatusTypeDef HAL_UART_Transmit_IT(UART_HandleTypeDef *huart, const uint8_t *pData, uint16_t Size);
+    HAL_StatusTypeDef HAL_UART_Receive_IT(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size);
+    void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
+    void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart);
+
+שליחה פשוטה (חוסמת):
+    #include <stdio.h>
+    #include <string.h>
+    extern UART_HandleTypeDef huart2;
+
+    void uart_print(const char *text) {
+        HAL_UART_Transmit(&huart2, (const uint8_t *)text, (uint16_t)strlen(text), 100);
+    }
+
+    /* שימוש */
+    char msg[32];
+    int len = snprintf(msg, sizeof msg, "ADC=%lu\r\n", (unsigned long)1234);
+    HAL_UART_Transmit(&huart2, (const uint8_t *)msg, (uint16_t)len, 100);
+
+קבלה בפסיקה – בית אחד בכל פעם, עם הפעלה מחדש בתוך ה־Callback:
+    static uint8_t rx_byte;
+
+    void uart_start_rx(void) {
+        HAL_UART_Receive_IT(&huart2, &rx_byte, 1);
+    }
+
+    void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+        if (huart->Instance == USART2) {
+            /* שמירה ב־Ring Buffer לעיבוד בלולאה הראשית */
+            /* rb_put(&rx_buffer, rx_byte); */
+            HAL_UART_Receive_IT(&huart2, &rx_byte, 1);   /* הפעלה מחדש לבית הבא */
+        }
+    }
+
+הערה תלויה בלוח: בלוחות Nucleo רבים, ‏USART2 מחובר לממשק ST-LINK, ומופיע במחשב כיציאת COM וירטואלית (Virtual COM Port). יש לבדוק במדריך הלוח.
+
+3. SPI
+-------
+SPI (Serial Peripheral Interface) הוא פרוטוקול סינכרוני עם Master אחד:
+- SCK – שעון מה־Master.
+- MOSI – נתונים מה־Master ל־Slave.
+- MISO – נתונים מה־Slave ל־Master.
+- CS/SS (Chip Select) – קו נפרד לכל Slave. בדרך כלל הוא Active Low: מושכים אותו ל־LOW כדי לבחור התקן.
+בכל פולס שעון, ביט אחד יוצא וביט אחד נכנס בו־זמנית. לכן כל שליחה היא גם קבלה (Full Duplex).
+מצב SPI (Mode 0–3) נקבע לפי CPOL (קוטביות השעון במנוחה) ו־CPHA (באיזה קצה דוגמים). המצב חייב להתאים להתקן, לפי גיליון הנתונים שלו.
+
+חתימות (מתוך stm32f4xx_hal_spi.h):
+    HAL_StatusTypeDef HAL_SPI_Transmit(SPI_HandleTypeDef *hspi, const uint8_t *pData, uint16_t Size, uint32_t Timeout);
+    HAL_StatusTypeDef HAL_SPI_Receive(SPI_HandleTypeDef *hspi, uint8_t *pData, uint16_t Size, uint32_t Timeout);
+    HAL_StatusTypeDef HAL_SPI_TransmitReceive(SPI_HandleTypeDef *hspi, const uint8_t *pTxData, uint8_t *pRxData, uint16_t Size, uint32_t Timeout);
+
+קריאת רגיסטר מהתקן SPI, כשה־CS מנוהל ידנית ב־GPIO:
+    extern SPI_HandleTypeDef hspi1;
+    #define CS_LOW()  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET)
+    #define CS_HIGH() HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET)
+
+    uint8_t spi_read_register(uint8_t reg) {
+        uint8_t tx[2] = { reg, 0x00 };   /* הבית השני הוא "דמה" – רק כדי לייצר שעון */
+        uint8_t rx[2] = { 0 };
+        CS_LOW();
+        HAL_SPI_TransmitReceive(&hspi1, tx, rx, 2, 10);
+        CS_HIGH();
+        return rx[1];                    /* התשובה מגיעה בבית השני */
+    }
+
+הפורמט של פקודת הקריאה – למשל אם צריך להדליק ביט עליון בכתובת כדי לסמן קריאה – שונה מהתקן להתקן. לכן בודקים תמיד בגיליון הנתונים של ההתקן.
+
+4. I2C
+-------
+I2C משתמש בשני קווים בלבד: SDA (נתונים) ו־SCL (שעון). שני הקווים הם Open-Drain, ולכן חובה נגדי Pull-up. ערכים נפוצים הם 4.7kΩ ל־100kHz, וערכים נמוכים יותר למהירות גבוהה או לקו ארוך. לכל התקן יש כתובת, בדרך כלל של 7 ביט.
+מבנה העברה: תנאי START, כתובת + ביט קריאה/כתיבה, ACK מההתקן, בתים של נתונים (כל אחד עם ACK), ותנאי STOP.
+
+כתובות ב־HAL: לפי התיעוד בקוד המקור של HAL, את הכתובת בת 7 הביטים שמופיעה בגיליון הנתונים צריך להזיז שמאלה בביט אחד לפני הקריאה לפונקציה. לדוגמה, להתקן בכתובת 0x68 מעבירים 0x68 << 1 = 0xD0. זו טעות נפוצה מאוד.
+
+חתימות (מתוך stm32f4xx_hal_i2c.h):
+    HAL_StatusTypeDef HAL_I2C_Master_Transmit(I2C_HandleTypeDef *hi2c, uint16_t DevAddress, uint8_t *pData, uint16_t Size, uint32_t Timeout);
+    HAL_StatusTypeDef HAL_I2C_Master_Receive(I2C_HandleTypeDef *hi2c, uint16_t DevAddress, uint8_t *pData, uint16_t Size, uint32_t Timeout);
+    HAL_StatusTypeDef HAL_I2C_Mem_Read(I2C_HandleTypeDef *hi2c, uint16_t DevAddress, uint16_t MemAddress, uint16_t MemAddSize, uint8_t *pData, uint16_t Size, uint32_t Timeout);
+    HAL_StatusTypeDef HAL_I2C_Mem_Write(I2C_HandleTypeDef *hi2c, uint16_t DevAddress, uint16_t MemAddress, uint16_t MemAddSize, uint8_t *pData, uint16_t Size, uint32_t Timeout);
+    HAL_StatusTypeDef HAL_I2C_IsDeviceReady(I2C_HandleTypeDef *hi2c, uint16_t DevAddress, uint32_t Trials, uint32_t Timeout);
+
+קריאת רגיסטר מהתקן I2C:
+    extern I2C_HandleTypeDef hi2c1;
+    #define DEV_ADDR_7BIT  0x68            /* כתובת לדוגמה – לפי גיליון הנתונים של ההתקן */
+
+    HAL_StatusTypeDef read_reg(uint8_t reg, uint8_t *value) {
+        return HAL_I2C_Mem_Read(&hi2c1, DEV_ADDR_7BIT << 1, reg,
+                                I2C_MEMADD_SIZE_8BIT, value, 1, 50);
+    }
+
+סריקת האפיק למציאת התקנים מחוברים:
+    for (uint16_t addr = 1; addr < 128; addr++) {
+        if (HAL_I2C_IsDeviceReady(&hi2c1, addr << 1, 2, 5) == HAL_OK) {
+            /* נמצא התקן בכתובת addr */
+        }
+    }
+
+5. בדיקת ערכי החזרה ו־Timeout
+-----------------------------
+כל הפונקציות מחזירות HAL_StatusTypeDef: ‏HAL_OK, ‏HAL_ERROR, ‏HAL_BUSY או HAL_TIMEOUT. בקוד אמיתי בודקים את הערך, כי התקן שאינו מחובר או חיבור שגוי יחזירו שגיאה ולא נתונים.
+פונקציות Polling חוסמות את המעבד עד הסיום או עד ה־Timeout. להעברות ארוכות, או כשהמעבד צריך להמשיך לעבוד, משתמשים בגרסאות _IT או _DMA ובפונקציות ה־Callback.
+
+6. שאלות תרגול ופתרונות
+------------------------
+שאלה 1: בגיליון הנתונים כתובת החיישן היא 0x3C. איזה ערך מעבירים ל־HAL_I2C_Master_Transmit?
+פתרון: 0x3C << 1 = 0x78. ‏HAL מצפה לכתובת בת 7 הביטים כשהיא מוזזת שמאלה בביט אחד.
+
+שאלה 2: חיברתם התקן I2C, ו־HAL_I2C_IsDeviceReady מחזירה תמיד שגיאה. מה כדאי לבדוק?
+פתרון: שיש נגדי Pull-up על SDA ועל SCL, שהכתובת מוזזת נכון, ש־GND משותף, ושהפינים מוגדרים ב־Alternate Function הנכון במצב Open-Drain.
+
+שאלה 3: למה בקריאת רגיסטר ב־SPI שולחים בית "דמה"?
+פתרון: ב־SPI, ה־Slave שולח נתונים רק כשה־Master מייצר שעון. כדי לקבל את בית התשובה, ה־Master חייב לשלוח בית נוסף, שערכו לא משנה. במקביל לשליחתו נקלט בית התשובה.
+
+שאלה 4: מה ההבדל בין HAL_UART_Receive ל־HAL_UART_Receive_IT?
+פתרון: HAL_UART_Receive חוסמת עד שמתקבלים כל הבתים או עד ה־Timeout. ‏HAL_UART_Receive_IT מתחילה את הקבלה וחוזרת מיד. בסיום נקראת HAL_UART_RxCpltCallback, ובינתיים המעבד ממשיך בעבודה אחרת.

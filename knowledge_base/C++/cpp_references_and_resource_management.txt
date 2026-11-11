@@ -1,0 +1,126 @@
+C++ – References, const וניהול משאבים (Rule of Three/Five)
+============================================================
+
+1. מה זה Reference?
+--------------------
+Reference הוא שם נוסף (Alias) למשתנה קיים. מגדירים אותו עם & אחרי הטיפוס:
+
+    int x = 10;
+    int& r = x;     // r הוא שם נוסף ל־x
+    r = 20;         // משנה את x
+    std::cout << x; // 20
+
+ההבדלים בין Reference למצביע:
+- Reference חייב להיות מאותחל ברגע ההגדרה, ואי אפשר "לכוון" אותו מחדש למשתנה אחר. השמה ל־Reference משנה את המשתנה המקורי.
+- Reference תקין תמיד מתייחס לאובייקט קיים, ואין "Null Reference" חוקי. מצביע יכול להיות nullptr.
+- התחביר נקי יותר: אין צורך ב־* וב־& בכל שימוש.
+- למצביע יש חשבון מצביעים. ל־Reference אין.
+
+2. העברת פרמטרים: ערך, Reference ו־const Reference
+---------------------------------------------------
+    void by_value(std::string s);          // עותק. שינוי לא משפיע על המקור
+    void by_ref(std::string& s);           // אין עותק. הפונקציה יכולה לשנות את המקור
+    void by_cref(const std::string& s);    // אין עותק, ואסור לשנות. הבחירה המקובלת לקריאה בלבד
+
+כללי אצבע:
+- טיפוסים קטנים (int, double, char, מצביעים) – מעבירים לפי ערך.
+- אובייקטים גדולים לקריאה בלבד (std::string, std::vector) – מעבירים const T&.
+- פרמטר שהפונקציה צריכה לשנות (Output Parameter) – מעבירים T&. לעיתים קרובות עדיף פשוט להחזיר ערך.
+
+    void swap_ints(int& a, int& b) {
+        int tmp = a;
+        a = b;
+        b = tmp;
+    }
+    int p = 1, q = 2;
+    swap_ints(p, q);   // p == 2, q == 1 – בלי & ובלי * בקריאה
+
+3. Dangling Reference
+----------------------
+אסור להחזיר Reference למשתנה מקומי:
+
+    const std::string& bad() {
+        std::string local = "temp";
+        return local;            // שגוי! local נהרס בסוף הפונקציה
+    }
+
+שימוש בערך המוחזר הוא Undefined Behavior. במקום זאת מחזירים לפי ערך (std::string). הקומפיילר יבצע אופטימיזציה (RVO/NRVO) או Move, כך שאין עותק יקר.
+
+4. const בכל הצורות
+--------------------
+    const int a = 5;                 // קבוע
+    const int* p1 = &a;              // מצביע לקבוע: אסור לשנות את *p1, מותר לשנות את p1
+    int b = 3;
+    int* const p2 = &b;              // מצביע קבוע: מותר לשנות את *p2, אסור לשנות את p2
+    const int* const p3 = &a;        // שניהם קבועים
+
+כלל קריאה: קוראים מימין לשמאל. int* const p הוא "p הוא מצביע קבוע ל־int".
+Methods מסוג const (int get() const) אינן משנות את האובייקט, ורק אותן מותר לקרוא על אובייקט const.
+constexpr (מ־C++11) מסמן ערך או פונקציה שניתנים לחישוב בזמן קומפילציה.
+
+5. lvalue, rvalue ו־Move Semantics
+----------------------------------
+- lvalue – ביטוי שיש לו זהות ומיקום, כמו משתנה בעל שם.
+- rvalue – ערך זמני, כמו התוצאה של a + b או אובייקט שמוחזר מפונקציה.
+Rvalue Reference (T&&) נקשר לערכים זמניים, ומאפשר "להעביר" (Move) את המשאבים שלהם במקום להעתיק.
+
+    std::vector<int> make_big() { return std::vector<int>(1000000, 7); }
+    std::vector<int> v = make_big();      // Move, ולא העתקה של מיליון איברים
+    std::vector<int> w = std::move(v);    // מעבירים במפורש. אחרי זה v במצב תקין אך לא מוגדר – אין להסתמך על תוכנו
+
+std::move אינו מזיז דבר בעצמו. הוא רק ממיר ל־rvalue, ובכך מאפשר לבחור ב־Move Constructor.
+
+6. Rule of Three / Five / Zero
+------------------------------
+מחלקה שמנהלת משאב בעצמה (למשל זיכרון שהוקצה עם new) צריכה לשלוט בהעתקה ובשחרור שלו.
+- Rule of Three: אם הגדרתם Destructor, Copy Constructor או Copy Assignment, כנראה שצריך להגדיר את שלושתם.
+- Rule of Five (C++11): ובנוסף גם Move Constructor ו־Move Assignment.
+- Rule of Zero: הדרך המומלצת היא לא לנהל משאבים ידנית. משתמשים ב־std::vector, ב־std::string וב־std::unique_ptr, ואז אין צורך להגדיר אף אחת מהפונקציות האלה.
+
+דוגמה לבעיה – העתקה רדודה (Shallow Copy):
+
+    class Buffer {
+        int* data_;
+        std::size_t size_;
+    public:
+        explicit Buffer(std::size_t n) : data_(new int[n]()), size_(n) {}
+        ~Buffer() { delete[] data_; }
+        // אין Copy Constructor – הקומפיילר יעתיק רק את המצביע
+    };
+
+    Buffer a(10);
+    Buffer b = a;    // a.data_ ו־b.data_ מצביעים לאותו זיכרון
+                     // בסוף ה־Scope שניהם יקראו delete[] – Double Free!
+
+פתרון לפי Rule of Zero:
+    class Buffer {
+        std::vector<int> data_;
+    public:
+        explicit Buffer(std::size_t n) : data_(n) {}
+        // העתקה, Move והריסה תקינים אוטומטית
+    };
+
+אם רוצים למנוע העתקה, מוחקים את הפונקציות במפורש:
+    Buffer(const Buffer&) = delete;
+    Buffer& operator=(const Buffer&) = delete;
+
+7. Smart Pointers
+------------------
+- std::unique_ptr<T> – בעלות בלעדית. אי אפשר להעתיק אותו, רק להעביר (Move). יוצרים עם std::make_unique.
+- std::shared_ptr<T> – בעלות משותפת עם ספירת הפניות (Reference Count). האובייקט נמחק כשה־shared_ptr האחרון נהרס. יוצרים עם std::make_shared.
+- std::weak_ptr<T> – הפניה לא־בעלים ל־shared_ptr. משמש לשבירת מעגלים של shared_ptr שאחרת היו יוצרים דליפת זיכרון.
+
+8. שאלות תרגול ופתרונות
+------------------------
+שאלה 1: מה הערך של x בסוף?
+    int x = 1; int y = 5; int& r = x; r = y; r++;
+פתרון: 6. ‏r = y אינו מכוון את r ל־y – הוא מציב את הערך 5 ב־x. אחר כך r++ מגדיל את x ל־6. ‏y נשאר 5.
+
+שאלה 2: איך כדאי להעביר std::vector<int> לפונקציה שרק מחשבת סכום?
+פתרון: const std::vector<int>&. כך אין העתקה, ואין אפשרות לשנות את הווקטור בטעות.
+
+שאלה 3: למה המחלקה Buffer המקורית מסעיף 6 תגרום לקריסה, ואיך מתקנים?
+פתרון: העתקה ברירת המחדל מעתיקה רק את המצביע, ולכן שני אובייקטים ישחררו את אותו זיכרון (Double Free). התיקון: Rule of Zero עם std::vector, או מימוש של Copy Constructor ו־Copy Assignment שמעתיקים את התוכן (העתקה עמוקה, Deep Copy).
+
+שאלה 4: מה ההבדל בין const int* p לבין int* const p?
+פתרון: ב־const int* p אסור לשנות את הערך המוצבע, אבל מותר להפנות את p לכתובת אחרת. ב־int* const p מותר לשנות את הערך, אבל אסור לשנות את הכתובת ש־p מחזיק.

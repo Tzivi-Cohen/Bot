@@ -1,0 +1,129 @@
+STM32 – טיימרים (Timers) וממיר אנלוגי לדיגיטלי (ADC)
+====================================================
+
+הערה: מספר הטיימרים, הערוצים, רזולוציית ה־ADC ותדרי השעון תלויים בדגם המיקרו־בקר ובהגדרות השעון שנבחרו ב־STM32CubeMX. חתימות הפונקציות לקוחות מקוד המקור של HAL למשפחת STM32F4. את הערכים המספריים בדוגמאות יש להתאים לתדר השעון של הטיימר בפרויקט שלכם.
+
+חלק א – טיימרים
+================
+
+1. איך טיימר עובד
+------------------
+טיימר הוא מונה בחומרה שסופר פולסי שעון. שלושה רגיסטרים עיקריים:
+- PSC (Prescaler) – מחלק את שעון הכניסה של הטיימר. המונה מתקדם בתדר f_timer / (PSC + 1).
+- ARR (Auto-Reload Register) – ערך המקסימום. כשהמונה (CNT) מגיע ל־ARR, הוא חוזר ל־0 ונוצר אירוע עדכון (Update Event), שיכול להפעיל פסיקה.
+- CNT – ערך המונה הנוכחי.
+
+נוסחת תדר אירוע העדכון:
+    f_update = f_timer / ((PSC + 1) × (ARR + 1))
+
+דוגמה: שעון הטיימר הוא 84MHz, ורוצים פסיקה כל 1ms (‏1kHz):
+- PSC = 83 → המונה מתקדם ב־84MHz / 84 = 1MHz, כלומר צעד אחד בכל מיקרו־שנייה.
+- ARR = 999 → אירוע עדכון כל 1000 צעדים, כלומר 1kHz.
+שימו לב: תדר השעון של טיימר תלוי באפיק (APB1 או APB2) שהוא מחובר אליו, ובהגדרות המחלקים. ב־STM32 רבים, כשמחלק ה־APB אינו 1, שעון הטיימר כפול משעון האפיק. את הערך המדויק בודקים במסך Clock Configuration של CubeMX.
+
+2. פסיקה מחזורית מטיימר
+------------------------
+אחרי שהטיימר מוגדר ב־CubeMX (למשל TIM2 עם PSC ו־ARR, ופסיקת NVIC פעילה):
+
+    extern TIM_HandleTypeDef htim2;
+
+    int main(void) {
+        HAL_Init();
+        /* SystemClock_Config(); MX_GPIO_Init(); MX_TIM2_Init(); */
+        HAL_TIM_Base_Start_IT(&htim2);       /* הפעלת המונה + פסיקת Update */
+        while (1) {
+            /* הלולאה הראשית פנויה */
+        }
+    }
+
+    /* נקרא מתוך HAL בכל אירוע Update של כל טיימר שהופעל עם _IT */
+    void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+        if (htim->Instance == TIM2) {
+            HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+        }
+    }
+
+אותו Callback משותף לכל הטיימרים, ולכן בודקים את htim->Instance. בפרויקטים של CubeIDE, הטיימר שמשמש כבסיס הזמן של HAL (לפעמים TIM6 או TIM1) עשוי גם הוא לקרוא ל־Callback הזה.
+
+3. PWM עם טיימר
+----------------
+בערוץ במצב PWM, הטיימר משווה את CNT לרגיסטר ההשוואה CCRx:
+- תדר ה־PWM נקבע לפי PSC ו־ARR (אותה נוסחה כמו למעלה).
+- מחזור העבודה (Duty Cycle) הוא CCR / (ARR + 1) – במצב PWM Mode 1 עם ספירה כלפי מעלה.
+
+    extern TIM_HandleTypeDef htim3;
+
+    void pwm_start(void) {
+        HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+    }
+
+    void pwm_set_percent(uint32_t percent) {          /* 0..100 */
+        uint32_t arr = __HAL_TIM_GET_AUTORELOAD(&htim3);
+        uint32_t ccr = (arr + 1) * percent / 100;
+        __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, ccr);
+    }
+
+דוגמה מספרית: שעון טיימר של 84MHz, ‏PSC = 83, ‏ARR = 999 → ‏PWM של 1kHz. ‏CCR = 250 נותן Duty Cycle של 25%.
+הפין של הערוץ חייב להיות מוגדר במצב Alternate Function המתאים לטיימר. CubeMX עושה זאת אוטומטית כשבוחרים את הפין.
+
+4. שימושים נוספים בטיימרים
+---------------------------
+- Input Capture – מדידת זמן בין קצוות של אות חיצוני, למשל למדידת תדר או רוחב פולס.
+- Output Compare – יצירת אירוע או שינוי פין בזמן מדויק.
+- Encoder Mode – קריאה ישירה של מקודד סיבובי (Quadrature Encoder).
+- טריגר ל־ADC – הפעלת דגימה בקצב קבוע ומדויק, בלי תלות בתוכנה.
+- __HAL_TIM_GET_COUNTER(&htim) – קריאת ערך המונה. מתאים למדידת זמנים קצרים.
+
+חלק ב – ADC
+============
+
+5. מושגי יסוד
+--------------
+ה־ADC ממיר מתח אנלוגי למספר. ברבים מדגמי STM32 הרזולוציה המרבית היא 12 ביט, כלומר 0 עד 4095. ב־HAL של F4 אפשר לבחור ADC_RESOLUTION_12B, ‏10B, ‏8B או 6B. יש משפחות עם רזולוציה אחרת (למשל H7 עם 16 ביט). מתח הייחוס הוא VREF+, ובלוחות רבים הוא 3.3V – תלוי בלוח.
+    V = raw × VREF / 4095      (ברזולוציה של 12 ביט)
+אסור להכניס לכניסה אנלוגית מתח שגבוה מהמתח המרבי המותר לפין, לפי גיליון הנתונים. בדרך כלל זה VDDA. למדידת מתחים גבוהים יותר משתמשים במחלק מתח.
+
+6. דגימה בודדת בשיטת Polling
+-----------------------------
+    extern ADC_HandleTypeDef hadc1;
+
+    uint32_t adc_read_once(void) {
+        uint32_t value = 0;
+        HAL_ADC_Start(&hadc1);
+        if (HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK) {   /* Timeout: 10ms */
+            value = HAL_ADC_GetValue(&hadc1);
+        }
+        HAL_ADC_Stop(&hadc1);
+        return value;
+    }
+
+    /* המרה למילי־וולט בהנחה של VREF = 3300mV ו־12 ביט */
+    uint32_t to_millivolts(uint32_t raw) {
+        return raw * 3300U / 4095U;
+    }
+
+החתימות (מתוך stm32f4xx_hal_adc.h):
+    HAL_StatusTypeDef HAL_ADC_Start(ADC_HandleTypeDef *hadc);
+    HAL_StatusTypeDef HAL_ADC_PollForConversion(ADC_HandleTypeDef *hadc, uint32_t Timeout);
+    uint32_t HAL_ADC_GetValue(ADC_HandleTypeDef *hadc);
+    HAL_StatusTypeDef HAL_ADC_Stop(ADC_HandleTypeDef *hadc);
+
+7. דגימה עם פסיקה ועם DMA
+--------------------------
+- HAL_ADC_Start_IT(&hadc1) מפעיל המרה, ובסיומה נקרא HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc). בתוך ה־Callback קוראים את הערך עם HAL_ADC_GetValue.
+- כשדוגמים כמה ערוצים ברצף (Scan Mode), או בקצב גבוה, משתמשים ב־DMA. ה־DMA מעתיק את התוצאות למערך בזיכרון בלי עבודה של המעבד, למשל עם HAL_ADC_Start_DMA.
+- זמן הדגימה (Sampling Time) לכל ערוץ נקבע ב־CubeMX. מקור אות עם התנגדות פנימית גבוהה (למשל מחלק מתח עם נגדים גדולים) צריך זמן דגימה ארוך יותר, כדי שהקבל הפנימי של ה־ADC יספיק להיטען.
+
+8. שאלות תרגול ופתרונות
+------------------------
+שאלה 1: שעון הטיימר הוא 72MHz. בחרו PSC ו־ARR לקבלת פסיקה כל 10ms.
+פתרון: אחת האפשרויות: PSC = 7199 → ‏72MHz / 7200 = 10kHz, כלומר צעד אחד כל 0.1ms. ‏ARR = 99 → אירוע כל 100 צעדים, כלומר כל 10ms (‏100Hz). יש גם צירופים נכונים אחרים.
+
+שאלה 2: טיימר PWM מוגדר עם ARR = 499. איזה CCR נותן Duty Cycle של 40%?
+פתרון: CCR = 0.4 × (499 + 1) = 200.
+
+שאלה 3: ה־ADC ב־12 ביט עם VREF = 3.3V מחזיר 2048. מה המתח, בקירוב?
+פתרון: 2048 × 3.3 / 4095 ≈ 1.65V – בערך חצי ממתח הייחוס.
+
+שאלה 4: למה בודקים את htim->Instance בתוך HAL_TIM_PeriodElapsedCallback?
+פתרון: כי זה Callback אחד משותף לכל הטיימרים שמפיקים פסיקת Update, כולל טיימר בסיס הזמן של HAL. בלי הבדיקה, הקוד ירוץ גם על אירועים של טיימרים אחרים.

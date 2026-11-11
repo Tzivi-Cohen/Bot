@@ -1,0 +1,181 @@
+מבני נתונים – עצים בינאריים ועצי חיפוש בינאריים (Binary Trees, BST)
+====================================================================
+
+1. מושגי יסוד
+--------------
+עץ (Tree) הוא מבנה היררכי של צמתים (Nodes):
+- שורש (Root) – הצומת העליון.
+- ילדים (Children) – הצמתים שמתחת לצומת מסוים.
+- עלה (Leaf) – צומת בלי ילדים.
+- עומק (Depth) של צומת – מספר הקשתות מהשורש אליו.
+- גובה (Height) של עץ – מספר הקשתות במסלול הארוך ביותר מהשורש לעלה. בעץ עם צומת אחד בלבד הגובה הוא 0.
+בעץ בינארי (Binary Tree) לכל צומת יש לכל היותר שני ילדים: שמאלי (left) וימני (right).
+
+סוגים:
+- עץ בינארי מלא (Full) – לכל צומת יש 0 או 2 ילדים.
+- עץ בינארי שלם (Complete) – כל הרמות מלאות, חוץ אולי מהאחרונה, שמתמלאת משמאל לימין. ערימה (Heap) בנויה כעץ שלם.
+- עץ מאוזן (Balanced) – גובה העץ הוא O(log n).
+
+בעץ בינארי שלם ומלא לגמרי עם גובה h יש 2^(h+1) - 1 צמתים.
+
+2. סריקות עץ (Tree Traversals)
+-------------------------------
+    class Node:
+        def __init__(self, value, left=None, right=None):
+            self.value = value
+            self.left = left
+            self.right = right
+
+    #        8
+    #       / \
+    #      3   10
+    #     / \    \
+    #    1   6    14
+    root = Node(8, Node(3, Node(1), Node(6)), Node(10, None, Node(14)))
+
+    def inorder(node, out):            # שמאל, שורש, ימין
+        if node:
+            inorder(node.left, out)
+            out.append(node.value)
+            inorder(node.right, out)
+        return out
+
+    def preorder(node, out):           # שורש, שמאל, ימין
+        if node:
+            out.append(node.value)
+            preorder(node.left, out)
+            preorder(node.right, out)
+        return out
+
+    def postorder(node, out):          # שמאל, ימין, שורש
+        if node:
+            postorder(node.left, out)
+            postorder(node.right, out)
+            out.append(node.value)
+        return out
+
+    inorder(root, [])     # [1, 3, 6, 8, 10, 14]
+    preorder(root, [])    # [8, 3, 1, 6, 10, 14]
+    postorder(root, [])   # [1, 6, 3, 14, 10, 8]
+
+סריקה לפי רמות (Level Order / BFS) משתמשת בתור:
+
+    from collections import deque
+
+    def level_order(root):
+        result, queue = [], deque([root] if root else [])
+        while queue:
+            node = queue.popleft()
+            result.append(node.value)
+            if node.left:
+                queue.append(node.left)
+            if node.right:
+                queue.append(node.right)
+        return result
+
+    level_order(root)     # [8, 3, 10, 1, 6, 14]
+
+שימושים:
+- Inorder ב־BST מחזיר את הערכים בסדר עולה.
+- Postorder מתאים למחיקת עץ, כי הילדים נמחקים לפני ההורה.
+- Preorder מתאים להעתקה או לסריאליזציה של עץ.
+
+3. עץ חיפוש בינארי (Binary Search Tree – BST)
+----------------------------------------------
+כלל ה־BST: לכל צומת, כל הערכים בתת־העץ השמאלי קטנים ממנו, וכל הערכים בתת־העץ הימני גדולים ממנו. העץ בסעיף 2 הוא BST.
+
+    def bst_insert(node, value):
+        if node is None:
+            return Node(value)
+        if value < node.value:
+            node.left = bst_insert(node.left, value)
+        elif value > node.value:
+            node.right = bst_insert(node.right, value)
+        # ערך שכבר קיים – לא מוסיפים כפילות
+        return node
+
+    def bst_search(node, value):
+        while node is not None:
+            if value == node.value:
+                return True
+            node = node.left if value < node.value else node.right
+        return False
+
+    def bst_min(node):
+        while node.left is not None:
+            node = node.left
+        return node.value
+
+סיבוכיות: חיפוש, הוספה ומחיקה לוקחים O(h), כאשר h הוא גובה העץ.
+- בעץ מאוזן h = O(log n).
+- במקרה הגרוע – למשל הכנסה של ערכים ממוינים 1, 2, 3, 4, ... – העץ הופך ל"שרשרת", ו־h = O(n).
+עצים מאזנים את עצמם (Self-Balancing), כמו AVL ו־Red-Black Tree, מבטיחים גובה O(log n). למשל, std::map ב־C++ ממומש בדרך כלל כ־Red-Black Tree.
+
+4. מחיקה מ־BST
+---------------
+שלושה מקרים:
+1) הצומת הוא עלה – פשוט מוחקים אותו.
+2) לצומת ילד אחד – מחברים את הילד ישירות להורה של הצומת.
+3) לצומת שני ילדים – מחליפים את ערכו בערך העוקב (Inorder Successor), כלומר הערך הקטן ביותר בתת־העץ הימני, ואז מוחקים את העוקב מתת־העץ הימני.
+
+    def bst_delete(node, value):
+        if node is None:
+            return None
+        if value < node.value:
+            node.left = bst_delete(node.left, value)
+        elif value > node.value:
+            node.right = bst_delete(node.right, value)
+        else:
+            if node.left is None:
+                return node.right
+            if node.right is None:
+                return node.left
+            successor = bst_min(node.right)
+            node.value = successor
+            node.right = bst_delete(node.right, successor)
+        return node
+
+5. גובה העץ ומספר הצמתים – רקורסיה
+------------------------------------
+    def height(node):
+        if node is None:
+            return -1           # לפי ההגדרה: לעץ ריק גובה -1, לעלה גובה 0
+        return 1 + max(height(node.left), height(node.right))
+
+    def count_nodes(node):
+        if node is None:
+            return 0
+        return 1 + count_nodes(node.left) + count_nodes(node.right)
+
+    height(root)       # 2
+    count_nodes(root)  # 6
+
+6. ערימה (Heap) בקצרה
+----------------------
+ערימת מינימום (Min-Heap) היא עץ בינארי שלם שבו כל הורה קטן או שווה לילדיו. היא נשמרת במערך: לצומת במקום i, הילדים נמצאים במקומות 2i+1 ו־2i+2, וההורה במקום (i-1)//2.
+- הוצאת המינימום: O(log n).
+- הכנסה: O(log n).
+- הצצה במינימום: O(1).
+ב־Python משתמשים במודול heapq. ערימה משמשת כתור עדיפויות (Priority Queue), למשל באלגוריתם Dijkstra ובמתזמני משימות.
+
+7. שאלות תרגול ופתרונות
+------------------------
+שאלה 1: הכניסו ל־BST ריק את הערכים 50, 30, 70, 20, 40, 60, 80. מה תחזיר סריקת Inorder?
+פתרון: 20, 30, 40, 50, 60, 70, 80. סריקת Inorder של BST מחזירה תמיד את הערכים ממוינים.
+
+שאלה 2: מה הסיבוכיות של חיפוש ב־BST שנבנה מהכנסה של 1, 2, 3, ..., n לפי הסדר?
+פתרון: O(n). כל ערך גדול מקודמו, ולכן הוא נכנס תמיד כילד ימני, והעץ הופך לרשימה מקושרת.
+
+שאלה 3: מה הגובה של העץ מסעיף 2, ולמה?
+פתרון: 2. המסלול הארוך ביותר מהשורש לעלה, למשל 8 → 3 → 1, מכיל שתי קשתות.
+
+שאלה 4: כתבו פונקציה שבודקת אם עץ בינארי הוא BST תקין.
+פתרון: מעבירים לכל צומת את הטווח המותר לו:
+    def is_bst(node, low=float("-inf"), high=float("inf")):
+        if node is None:
+            return True
+        if not (low < node.value < high):
+            return False
+        return (is_bst(node.left, low, node.value) and
+                is_bst(node.right, node.value, high))
+בדיקה של כל צומת רק מול ילדיו הישירים אינה מספיקה. צומת עמוק בתת־העץ השמאלי עלול להיות גדול מהשורש.

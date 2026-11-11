@@ -1,0 +1,141 @@
+C++ – ירושה ופולימורפיזם (Inheritance and Polymorphism)
+========================================================
+
+1. ירושה (Inheritance)
+-----------------------
+ירושה מאפשרת להגדיר מחלקה חדשה (Derived Class) על בסיס מחלקה קיימת (Base Class). היא מתארת יחס של "הוא סוג של" (is-a): כלב הוא סוג של חיה.
+
+    #include <iostream>
+    #include <string>
+
+    class Animal {
+    protected:
+        std::string name_;
+    public:
+        explicit Animal(const std::string& name) : name_(name) {}
+        void sleep() const { std::cout << name_ << " is sleeping\n"; }
+    };
+
+    class Dog : public Animal {
+    public:
+        explicit Dog(const std::string& name) : Animal(name) {}  // קריאה ל־Constructor של הבסיס
+        void bark() const { std::cout << name_ << ": Woof\n"; }
+    };
+
+    int main() {
+        Dog d("Rex");
+        d.sleep();   // יורש מ־Animal
+        d.bark();
+    }
+
+סוגי ירושה:
+- public – השדות שהם public ו־protected בבסיס שומרים על הרשאתם. זה הסוג הנפוץ, והוא מבטא is-a.
+- protected ו־private – משנים את הרשאות הגישה כלפי חוץ. שימושיים במקרים מיוחדים.
+
+סדר בנייה והריסה: קודם נבנה הבסיס ואחר כך המחלקה היורשת. בהריסה הסדר הפוך: קודם המחלקה היורשת ואחר כך הבסיס.
+
+2. פולימורפיזם – פונקציות וירטואליות
+------------------------------------
+פולימורפיזם (Polymorphism) מאפשר לקרוא לפונקציה דרך מצביע או Reference למחלקת הבסיס, ולהפעיל את המימוש של הטיפוס האמיתי של האובייקט. ההכרעה מתבצעת בזמן ריצה (Dynamic Dispatch).
+
+    #include <memory>
+    #include <vector>
+
+    class Shape {
+    public:
+        virtual double area() const = 0;   // Pure Virtual – אין מימוש בבסיס
+        virtual ~Shape() = default;        // Virtual Destructor – חובה במחלקת בסיס פולימורפית
+    };
+
+    class Circle : public Shape {
+        double r_;
+    public:
+        explicit Circle(double r) : r_(r) {}
+        double area() const override { return 3.14159265 * r_ * r_; }
+    };
+
+    class Rectangle : public Shape {
+        double w_, h_;
+    public:
+        Rectangle(double w, double h) : w_(w), h_(h) {}
+        double area() const override { return w_ * h_; }
+    };
+
+    int main() {
+        std::vector<std::unique_ptr<Shape>> shapes;
+        shapes.push_back(std::make_unique<Circle>(1.0));
+        shapes.push_back(std::make_unique<Rectangle>(2.0, 3.0));
+        for (const auto& s : shapes) {
+            std::cout << s->area() << '\n';   // 3.14159 ואחר כך 6
+        }
+    }
+
+מושגים:
+- virtual – מסמן פונקציה שמחלקות יורשות יכולות לדרוס (Override), עם הכרעה בזמן ריצה.
+- = 0 – פונקציה וירטואלית טהורה (Pure Virtual). מחלקה עם פונקציה כזו היא מחלקה מופשטת (Abstract Class), ואי אפשר ליצור ממנה אובייקט.
+- override (מ־C++11) – מבקש מהקומפיילר לוודא שאכן נדרסת פונקציה וירטואלית. אם יש טעות בחתימה, למשל const חסר, תתקבל שגיאת קומפילציה במקום באג שקט.
+- final – מונע דריסה נוספת של הפונקציה, או ירושה נוספת מהמחלקה.
+
+3. למה Virtual Destructor?
+-------------------------
+אם מוחקים אובייקט יורש דרך מצביע לבסיס, וה־Destructor של הבסיס אינו virtual, זה Undefined Behavior. בפועל, בדרך כלל רק ה־Destructor של הבסיס רץ, והמשאבים של המחלקה היורשת לא משתחררים.
+
+    Shape* s = new Circle(2.0);
+    delete s;    // תקין רק כי ~Shape הוא virtual
+
+כלל: כל מחלקה שמיועדת לשמש בסיס פולימורפי צריכה Virtual Destructor.
+
+4. Static Binding מול Dynamic Binding
+-------------------------------------
+- פונקציה רגילה (לא virtual) – הקומפיילר בוחר את המימוש לפי הטיפוס הסטטי (טיפוס המצביע או ה־Reference). זה Static Binding.
+- פונקציה virtual – המימוש נבחר לפי הטיפוס האמיתי של האובייקט בזמן ריצה. זה Dynamic Binding.
+
+המנגנון הנפוץ למימוש הוא טבלה של פונקציות וירטואליות (vtable). כל אובייקט מחלקה פולימורפית מכיל מצביע נסתר לטבלה (vptr). פרט מימוש זה אינו מוגדר בתקן, אבל כמעט כל הקומפיילרים משתמשים בו. המחיר: עוד מצביע בכל אובייקט, וקריאה עקיפה לפונקציה.
+
+5. Object Slicing
+------------------
+העתקת אובייקט יורש לתוך משתנה מטיפוס הבסיס (לפי ערך) "חותכת" את החלק היורש:
+
+    Animal a = Dog("Rex");        // a הוא Animal בלבד – החלק של Dog נחתך
+
+(עם מחלקה מופשטת כמו Shape אי אפשר בכלל ליצור עותק לפי ערך, כי אי אפשר ליצור אובייקט מטיפוס מופשט.)
+
+כדי לשמור על פולימורפיזם, מעבירים Reference או מצביע: void f(const Shape& s).
+
+6. העמסת פונקציות (Overloading) מול דריסה (Overriding)
+-------------------------------------------------------
+- Overloading: כמה פונקציות עם אותו שם וחתימות שונות באותו Scope. ההכרעה מתבצעת בזמן קומפילציה.
+- Overriding: מחלקה יורשת מספקת מימוש חדש לפונקציה וירטואלית עם אותה חתימה. ההכרעה מתבצעת בזמן ריצה.
+
+העמסת אופרטורים (Operator Overloading) היא מקרה פרטי של העמסה:
+
+    struct Vec2 {
+        double x, y;
+        Vec2 operator+(const Vec2& o) const { return {x + o.x, y + o.y}; }
+    };
+
+7. ירושה מרובה בקצרה
+---------------------
+C++ מאפשרת ירושה מכמה מחלקות. כששתי מחלקות בסיס יורשות מאותו בסיס משותף נוצרת בעיית "היהלום" (Diamond Problem), ופותרים אותה עם ירושה וירטואלית (virtual public). מקובל להשתמש בירושה מרובה בעיקר לממשקים, כלומר מחלקות מופשטות ללא נתונים.
+
+8. שאלות תרגול ופתרונות
+------------------------
+שאלה 1: מה יודפס?
+    struct Base { void f() { std::cout << "B"; } virtual void g() { std::cout << "B"; } };
+    struct Der : Base { void f() { std::cout << "D"; } void g() override { std::cout << "D"; } };
+    Base* p = new Der; p->f(); p->g();
+פתרון: BD. ‏f אינה virtual, ולכן נבחרת לפי הטיפוס הסטטי Base. ‏g היא virtual, ולכן נבחרת לפי הטיפוס האמיתי Der.
+(ובקוד אמיתי יש להוסיף delete p, ו־Virtual Destructor ב־Base.)
+
+שאלה 2: מה המשמעות של מחלקה עם פונקציה = 0?
+פתרון: זו מחלקה מופשטת (Abstract Class). אי אפשר ליצור ממנה אובייקט ישירות, ומחלקה יורשת חייבת לממש את הפונקציה כדי שאפשר יהיה ליצור ממנה אובייקטים.
+
+שאלה 3: מה התועלת במילה override?
+פתרון: הקומפיילר מוודא שהפונקציה אכן דורסת פונקציה וירטואלית של הבסיס. טעות בחתימה (const חסר, טיפוס פרמטר שונה) תגרום לשגיאת קומפילציה, במקום ליצור בשקט פונקציה חדשה שאינה נקראת דרך הבסיס.
+
+שאלה 4: הוסיפו למחלקות בסעיף 2 מחלקה Square שיורשת מ־Rectangle.
+פתרון:
+    class Square : public Rectangle {
+    public:
+        explicit Square(double side) : Rectangle(side, side) {}
+    };
